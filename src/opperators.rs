@@ -47,10 +47,10 @@ macro_rules! group_opps {
             fn from_str(s: &str) -> Result<Self, Self::Err> {
                 $(
                     if let Ok(o) = s.parse::<$opp>() {
-                        return Ok(Self::$opp(o));
-                    }
-                )+
-                return Err(());
+                        Ok(Self::$opp(o))
+                } else )+ {
+                    Err(())
+                }
             }
         }        
     };
