@@ -1,15 +1,43 @@
 use std::{fmt, str::FromStr};
 
-trait Language {
+pub struct Variable {
+    name: String,
+}
+
+impl fmt::Display for Variable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name.as_str())
+    }
+}
+
+impl FromStr for Variable {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.chars().all(char::is_uppercase) {
+            Ok(Variable { name: s.to_string() })
+        } else {
+            Err(())
+        }
+    }
+}
+
+pub trait Language {
     type Atom: fmt::Display + FromStr;
     type UnaryOpp: fmt::Display + FromStr;
     type BinaryOpp: fmt::Display + FromStr;
     type Function: fmt::Display + FromStr;
-
-    fn is_symbol(s: &str) -> bool;
 }
 
-enum Formula<L: Language> {
+pub fn is_symbol<L: Language>(s: &str) -> bool {
+    s == "(" ||
+    s == ")" ||
+    s.parse::<L::Atom>().is_ok() ||
+    s.parse::<L::UnaryOpp>().is_ok() ||
+    s.parse::<L::BinaryOpp>().is_ok() ||
+    s.parse::<L::Function>().is_ok()
+}
+
+pub enum Formula<L: Language> {
     Atom(L::Atom),
     UnaryOpp(L::UnaryOpp, Box<Formula<L>>),
     BinaryOpp(Box<Formula<L>>, L::BinaryOpp, Box<Formula<L>>),
@@ -32,10 +60,10 @@ fn parse_from_symboles<'a, L: Language>(symbols: &'a [&'a str]) -> Result<(Formu
             format!("unexpected {}, BinaryOpp expected", symbols[lhs_len])
         })?;
         let (rhs, rhs_len) = parse_from_symboles::<L>(&symbols[(lhs_len + 2)..])?;
-        if symbols.len() <= lhs_len + rhs_len + 3 {
+        if symbols.len() < lhs_len + rhs_len + 3 {
             return Err(String::from("unexpected end of source"));
         }
-        if symbols[lhs_len + rhs_len + 1] != ")" {
+        if symbols[lhs_len + rhs_len + 2] != ")" {
             return Err(format!("unexpected {}, ')' expected", symbols[lhs_len + rhs_len + 2]));
         }
         Ok((Formula::BinaryOpp(Box::new(lhs), opp, Box::new(rhs)), lhs_len + rhs_len + 3))
@@ -69,23 +97,24 @@ fn parse_from_symboles<'a, L: Language>(symbols: &'a [&'a str]) -> Result<(Formu
     }
 }
 
-impl<L: Language> Formula<L> {
-    fn parse(s: &str) -> Result<Self, String> {
+impl<L: Language> FromStr for Formula<L> {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut symbols = Vec::new();
         let mut i = 0;
         while i < s.len() {
-            let mut j = i + 1;
-            while L::is_symbol(&s[i..j]) {
-                j += 1;
+            let mut j = s.len();
+            while j > i && !is_symbol::<L>(&s[i..j]) {
+                j -= 1;
             }
-            j -= 1;
             if j == i {
-                // not a symbol
+                i += 1;
             } else {
                 symbols.push(&s[i..j]);
+                i = j;
             }
-            i = j;
         }
+
         parse_from_symboles(&symbols[..]).map(|(f, _)| {f})
     }
 }
