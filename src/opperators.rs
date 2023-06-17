@@ -62,6 +62,11 @@ pub(crate) use group_opps;
 opp!(Neg, "!");
 opp!(And, "&&");
 opp!(Or, "||");
+opp!(Implie, "=>");
+opp!(IfAndOnlyIf, "<=>");
+
+opp!(Conjuction, "ALL");
+opp!(Disjuction, "ANY");
 
 // specials
 opp!(NoOp, "");

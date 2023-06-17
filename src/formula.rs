@@ -1,5 +1,6 @@
-use std::{fmt, str::FromStr};
+use std::{fmt, str::FromStr, collections::HashSet};
 
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Variable {
     name: String,
 }
@@ -42,6 +43,27 @@ pub enum Formula<L: Language> {
     UnaryOpp(L::UnaryOpp, Box<Formula<L>>),
     BinaryOpp(Box<Formula<L>>, L::BinaryOpp, Box<Formula<L>>),
     Function(L::Function, Vec<Formula<L>>),
+}
+
+pub fn get_atoms<L: Language>(f: &Formula<L>) -> HashSet<&L::Atom> where L::Atom: Eq + std::hash::Hash {
+    match f {
+        Formula::Atom(a) => HashSet::from([a]),
+        Formula::UnaryOpp(_, a) => get_atoms(a),
+        Formula::BinaryOpp(a, _, b) => {
+            let mut set = get_atoms(a);
+            get_atoms(b)
+                .into_iter()
+                .collect_into(&mut set);
+            set
+        },
+        Formula::Function(_, args) => args.iter()
+            .map(|arg| { get_atoms(arg) })
+            .reduce(|mut a, b| {
+                b.into_iter().collect_into(&mut a);
+                a
+            })
+            .unwrap_or_default(),
+    }
 }
 
 fn parse_from_symboles<'a, L: Language>(symbols: &'a [&'a str]) -> Result<(Formula<L>, usize), String> {
