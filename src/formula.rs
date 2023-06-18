@@ -1,6 +1,6 @@
 use std::{fmt, str::FromStr, collections::HashSet};
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Variable {
     name: String,
 }
@@ -32,6 +32,7 @@ pub trait Language {
 pub fn is_symbol<L: Language>(s: &str) -> bool {
     s == "(" ||
     s == ")" ||
+    s == "," ||
     s.parse::<L::Atom>().is_ok() ||
     s.parse::<L::UnaryOpp>().is_ok() ||
     s.parse::<L::BinaryOpp>().is_ok() ||

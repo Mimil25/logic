@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::formula::{Language, Formula};
 
@@ -14,7 +14,7 @@ pub trait Valuation<L: Language, Type> {
 
 #[derive(Debug)]
 pub struct HashMapValuation<L: Language, Type> where L::Atom: Eq + std::hash::Hash {
-    map: HashMap<L::Atom, Type>,
+    pub map: HashMap<L::Atom, Type>,
 }
 
 impl<L: Language, Type: Copy> Valuation<L, Type> for HashMapValuation<L, Type> where L::Atom: Eq + std::hash::Hash {
@@ -31,6 +31,53 @@ impl<L: Language, Type> TryFrom<HashMap<&str, Type>> for HashMapValuation<L, Typ
             map.push((k.parse()?, v));
         }
         Ok(Self { map: map.into_iter().collect() })
+    }
+}
+
+impl<L: Language> IntoIterator for HashMapValuation<L, bool> where L::Atom: Eq + std::hash::Hash {
+    type IntoIter = HashMapValuationIter<L>;
+    type Item = <Self::IntoIter as Iterator>::Item;
+    fn into_iter(mut self) -> Self::IntoIter { 
+        for (_, v) in self.map.iter_mut() {
+            *v = false;
+        }
+        HashMapValuationIter::<L> {
+            values: self,
+        }
+    }
+}
+
+pub struct HashMapValuationIter<L: Language> where L::Atom: Eq + std::hash::Hash {
+    pub values: HashMapValuation<L, bool>,
+}
+
+impl<L: Language> Iterator for HashMapValuationIter<L> where L::Atom: Eq + std::hash::Hash {
+    type Item = ();
+    // set the values to their next position
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut carry = true;
+        for (_, v) in self.values.map.iter_mut() {
+            let t = *v;
+            *v ^= carry;
+            carry &= t;
+        }
+        if carry{
+            None
+        } else {
+            Some(())
+        }
+    }
+}
+
+impl<L: Language> From<HashSet<&L::Atom>> for HashMapValuationIter<L> where L::Atom: Eq + std::hash::Hash + Clone {
+    fn from(value: HashSet<&L::Atom>) -> Self {
+        Self {
+            values: HashMapValuation {
+                map: value.into_iter()
+                    .map(|a| (a.clone(), false))
+                    .collect()
+            }
+        }
     }
 }
 

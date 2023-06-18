@@ -1,30 +1,26 @@
 #![feature(iter_collect_into)]
+#![feature(inherent_associated_types)]
 mod formula;
 mod interpretation;
 mod opperators;
 mod propositional_logic;
 
-use std::collections::HashMap;
+use std::io::Write;
 
 use formula::*;
 use propositional_logic::PropositionalLanguage;
-use propositional_logic::boolean_interpretation::BooleanInterpretation;
-use interpretation::*;
+use propositional_logic::boolean_interpretation::truth_table_print;
 
 fn main() {
-    let a: Formula<PropositionalLanguage<Variable>> = "((A && B) || !A)".parse().unwrap();
-    println!("{}", a);
-    let atoms = get_atoms(&a);
-    println!("{:?}", &atoms);
-    let vals: HashMapValuation<PropositionalLanguage<Variable>, bool> = HashMapValuation::try_from(HashMap::from([("A", true), ("B", false)])).unwrap();
-
-    println!("{:?}", &vals);
-    
-    let result = evaluate::<
-        PropositionalLanguage<Variable>,
-        bool,
-        BooleanInterpretation,
-        HashMapValuation<PropositionalLanguage<Variable>, bool>
-        >(&a, &vals);
-    println!(" = {}", result)
+    loop {
+        print!("Enter propositional statement : ");
+        let mut s = String::new();
+        std::io::stdout().flush().unwrap();
+        std::io::stdin().read_line(&mut s).unwrap();
+        let r = s.parse::<Formula<PropositionalLanguage<Variable>>>();
+        match r {
+            Ok(f) => truth_table_print(&f).unwrap(),
+            Err(e) => eprintln!("Error : {}", e),
+        }
+    }
 }
