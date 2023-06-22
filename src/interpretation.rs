@@ -13,17 +13,17 @@ pub trait Valuation<L: Language, Type> {
 }
 
 #[derive(Debug)]
-pub struct HashMapValuation<L: Language, Type> where L::Atom: Eq + std::hash::Hash {
+pub struct HashMapValuation<L: Language, Type> {
     pub map: HashMap<L::Atom, Type>,
 }
 
-impl<L: Language, Type: Copy> Valuation<L, Type> for HashMapValuation<L, Type> where L::Atom: Eq + std::hash::Hash {
+impl<L: Language, Type: Copy> Valuation<L, Type> for HashMapValuation<L, Type> {
     fn valuation(&self, atom: &<L as Language>::Atom) -> Type {
         *self.map.get(atom).unwrap()
     }
 }
 
-impl<L: Language, Type> TryFrom<HashMap<&str, Type>> for HashMapValuation<L, Type> where L::Atom: Eq + std::hash::Hash {
+impl<L: Language, Type> TryFrom<HashMap<&str, Type>> for HashMapValuation<L, Type> {
     type Error = <L::Atom as std::str::FromStr>::Err;
     fn try_from(value: HashMap<&str, Type>) -> Result<Self, Self::Error> {
         let mut map = Vec::with_capacity(value.len());
@@ -34,7 +34,7 @@ impl<L: Language, Type> TryFrom<HashMap<&str, Type>> for HashMapValuation<L, Typ
     }
 }
 
-impl<L: Language> IntoIterator for HashMapValuation<L, bool> where L::Atom: Eq + std::hash::Hash {
+impl<L: Language> IntoIterator for HashMapValuation<L, bool> {
     type IntoIter = HashMapValuationIter<L>;
     type Item = <Self::IntoIter as Iterator>::Item;
     fn into_iter(mut self) -> Self::IntoIter { 
@@ -47,11 +47,11 @@ impl<L: Language> IntoIterator for HashMapValuation<L, bool> where L::Atom: Eq +
     }
 }
 
-pub struct HashMapValuationIter<L: Language> where L::Atom: Eq + std::hash::Hash {
+pub struct HashMapValuationIter<L: Language> {
     pub values: HashMapValuation<L, bool>,
 }
 
-impl<L: Language> Iterator for HashMapValuationIter<L> where L::Atom: Eq + std::hash::Hash {
+impl<L: Language> Iterator for HashMapValuationIter<L> {
     type Item = ();
     // set the values to their next position
     fn next(&mut self) -> Option<Self::Item> {
@@ -69,7 +69,7 @@ impl<L: Language> Iterator for HashMapValuationIter<L> where L::Atom: Eq + std::
     }
 }
 
-impl<L: Language> From<HashSet<&L::Atom>> for HashMapValuationIter<L> where L::Atom: Eq + std::hash::Hash + Clone {
+impl<L: Language> From<HashSet<&L::Atom>> for HashMapValuationIter<L> {
     fn from(value: HashSet<&L::Atom>) -> Self {
         Self {
             values: HashMapValuation {

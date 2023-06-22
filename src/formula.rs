@@ -5,6 +5,8 @@ pub struct Variable {
     name: String,
 }
 
+pub trait Atom: fmt::Display + Clone + PartialEq + Eq + FromStr + std::hash::Hash{}
+
 impl fmt::Display for Variable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.name.as_str())
@@ -22,11 +24,13 @@ impl FromStr for Variable {
     }
 }
 
-pub trait Language {
-    type Atom: fmt::Display + FromStr;
-    type UnaryOpp: fmt::Display + FromStr;
-    type BinaryOpp: fmt::Display + FromStr;
-    type Function: fmt::Display + FromStr;
+impl Atom for Variable {}
+
+pub trait Language: std::cmp::PartialEq + std::clone::Clone {
+    type Atom: Atom;
+    type UnaryOpp: fmt::Display + FromStr + Eq + PartialEq + Clone;
+    type BinaryOpp: fmt::Display + FromStr + Eq + PartialEq + Clone;
+    type Function: fmt::Display + FromStr + Eq + PartialEq + Clone;
 }
 
 pub fn is_symbol<L: Language>(s: &str) -> bool {
@@ -39,6 +43,7 @@ pub fn is_symbol<L: Language>(s: &str) -> bool {
     s.parse::<L::Function>().is_ok()
 }
 
+#[derive(PartialEq, Eq, Clone)]
 pub enum Formula<L: Language> {
     Atom(L::Atom),
     UnaryOpp(L::UnaryOpp, Box<Formula<L>>),
@@ -46,7 +51,92 @@ pub enum Formula<L: Language> {
     Function(L::Function, Vec<Formula<L>>),
 }
 
-pub fn get_atoms<L: Language>(f: &Formula<L>) -> HashSet<&L::Atom> where L::Atom: Eq + std::hash::Hash {
+
+pub struct FormulaIterator<'a, L: Language> {
+    f: &'a Formula<L>,
+    i: usize,
+    nested: Option<Box<FormulaIterator<'a, L>>>,
+}
+
+impl<'a, L: Language> Iterator for FormulaIterator<'a, L> {
+    type Item = &'a L::Atom;
+    fn next(&mut self) -> Option<Self::Item> {
+        match &mut self.nested {
+            Some(iter) => {
+                let next = iter.next();
+                if next.is_none() {
+                    self.nested = None;
+                }
+                return next;
+            },
+            None => {},
+        }
+        match self.f {
+            Formula::Atom(a) => {
+                if self.i != 0 {
+                    None
+                } else {
+                    self.i += 1;
+                    Some(a)
+                }
+            },
+            Formula::UnaryOpp(_, next) => {
+                if self.i != 0 {
+                    None
+                } else {
+                    let mut nested = Self {
+                        f: next,
+                        i: 0,
+                        nested: None,
+                    };
+                    let r = nested.next();
+                    if r.is_some() {
+                        self.nested = Some(Box::new(nested));
+                    }
+                    r
+                }
+            }
+            Formula::BinaryOpp(a, _, b) => {
+                let r = if self.i == 0 {
+                    a
+                } else if self.i == 1 {
+                    b
+                } else {
+                    return None;
+                };
+                let mut nested = Self {
+                    f: r,
+                    i: 0,
+                    nested: None,
+                };
+                let r = nested.next();
+                if r.is_some() {
+                    self.nested = Some(Box::new(nested));
+                }
+                r
+            }
+            Formula::Function(_, args) => {
+                if self.i < args.len() {
+                    let mut nested = Self {
+                        f: &args[self.i],
+                        i: 0,
+                        nested: None,
+                    };
+                    let r = nested.next();
+                    if r.is_some() {
+                        self.nested = Some(Box::new(nested));
+                    }
+                    r
+                } else {
+                    None
+                }
+            }
+        }
+    }
+}
+
+
+pub fn get_atoms<L: Language>(f: &Formula<L>) -> HashSet<&L::Atom> {
     match f {
         Formula::Atom(a) => HashSet::from([a]),
         Formula::UnaryOpp(_, a) => get_atoms(a),
@@ -59,6 +149,27 @@ pub fn get_atoms<L: Language>(f: &Formula<L>) -> HashSet<&L::Atom> where L::Atom
         },
         Formula::Function(_, args) => args.iter()
             .map(|arg| { get_atoms(arg) })
+            .reduce(|mut a, b| {
+                b.into_iter().collect_into(&mut a);
+                a
+            })
+            .unwrap_or_default(),
+    }
+}
+
+pub fn get_atoms_mut<L: Language>(f: &mut Formula<L>) -> Vec<&mut L::Atom> {
+    match f {
+        Formula::Atom(a) => Vec::from([&mut*a]),
+        Formula::UnaryOpp(_, a) => get_atoms_mut(a),
+        Formula::BinaryOpp(a, _, b) => {
+            let mut set = get_atoms_mut(a);
+            get_atoms_mut(b)
+                .into_iter()
+                .collect_into(&mut set);
+            set
+        },
+        Formula::Function(_, args) => args.iter_mut()
+            .map(|arg| { get_atoms_mut(arg) })
             .reduce(|mut a, b| {
                 b.into_iter().collect_into(&mut a);
                 a

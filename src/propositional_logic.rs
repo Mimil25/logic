@@ -3,15 +3,15 @@ use std::{fmt, str::FromStr, marker::PhantomData};
 use crate::formula::*;
 use crate::opperators::*;
 
-#[derive(Debug)]
-pub struct PropositionalLanguage<A: fmt::Display + FromStr> {
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct PropositionalLanguage<A: Atom> {
     _phantom_data: PhantomData<A>
 }
 
 group_opps!(PLBinOpps, And, Or, Implie, IfAndOnlyIf);
 group_opps!(PLFuncs, Conjuction, Disjuction);
 
-impl<A: fmt::Display + FromStr> Language for PropositionalLanguage<A> {
+impl<A: Atom> Language for PropositionalLanguage<A> {
     type Atom = A;
     type UnaryOpp = Neg;
     type BinaryOpp = PLBinOpps;
@@ -20,12 +20,10 @@ impl<A: fmt::Display + FromStr> Language for PropositionalLanguage<A> {
 
 
 pub mod boolean_interpretation {
-    use std::{fmt, io};
-    use std::str::FromStr;
+    use std::io;
     use std::ops::{Not, BitAnd, BitOr};
-    use std::collections::HashSet;
 
-    use crate::formula::{Formula, Language, get_atoms};
+    use crate::formula::{Formula, Atom, get_atoms};
 
     use super::super::interpretation::*;
     use super::PropositionalLanguage;
@@ -34,12 +32,12 @@ pub mod boolean_interpretation {
 
     impl<
         Type: Copy + Not<Output = Type> + BitAnd<Output = Type> + BitOr<Output = Type>,
-        Atom: fmt::Display + FromStr
-    > Interpretation<PropositionalLanguage<Atom>, Type> for BooleanInterpretation {
-        fn unary(_o: &<PropositionalLanguage<Atom> as crate::formula::Language>::UnaryOpp, a: Type) -> Type {
+        A: Atom
+    > Interpretation<PropositionalLanguage<A>, Type> for BooleanInterpretation {
+        fn unary(_o: &<PropositionalLanguage<A> as crate::formula::Language>::UnaryOpp, a: Type) -> Type {
             !a
         }
-        fn binary(a: Type, o: &<PropositionalLanguage<Atom> as crate::formula::Language>::BinaryOpp, b: Type) -> Type {
+        fn binary(a: Type, o: &<PropositionalLanguage<A> as crate::formula::Language>::BinaryOpp, b: Type) -> Type {
             match o {
                 super::PLBinOpps::And(_) => a & b,
                 super::PLBinOpps::Or(_) => a | b,
@@ -48,7 +46,7 @@ pub mod boolean_interpretation {
             }
         }
 
-        fn function<I: Iterator<Item = Type>>(f: &<PropositionalLanguage<Atom> as crate::formula::Language>::Function, args: I) -> Type {
+        fn function<I: Iterator<Item = Type>>(f: &<PropositionalLanguage<A> as crate::formula::Language>::Function, args: I) -> Type {
             match f {
                 super::PLFuncs::Conjuction(_) => args.reduce(BitAnd::bitand).unwrap(),
                 super::PLFuncs::Disjuction(_) => args.reduce(BitOr::bitor).unwrap(),
@@ -56,17 +54,15 @@ pub mod boolean_interpretation {
         }
     }
 
-    pub fn truth_table_totology
-        <Atom: FromStr + fmt::Display + Eq + std::hash::Hash + Clone>
-            (f: &Formula<PropositionalLanguage<Atom>>) -> bool {
-        let mut iter = HashMapValuationIter::<PropositionalLanguage<Atom>>::from(get_atoms(f));
+    pub fn truth_table_totology<A: Atom>(f: &Formula<PropositionalLanguage<A>>) -> bool {
+        let mut iter = HashMapValuationIter::<PropositionalLanguage<A>>::from(get_atoms(f));
         loop {
             let result = evaluate::
                 <
-                PropositionalLanguage<Atom>,
+                PropositionalLanguage<A>,
                 bool,
                 BooleanInterpretation,
-                HashMapValuation<PropositionalLanguage<Atom>, bool>
+                HashMapValuation<PropositionalLanguage<A>, bool>
                 >(f, &iter.values);
             if !result {
                 return false;
@@ -78,17 +74,15 @@ pub mod boolean_interpretation {
         true
     }
 
-    pub fn truth_table_antilogy
-        <Atom: FromStr + fmt::Display + Eq + std::hash::Hash + Clone>
-            (f: &Formula<PropositionalLanguage<Atom>>) -> bool {
-        let mut iter = HashMapValuationIter::<PropositionalLanguage<Atom>>::from(get_atoms(f));
+    pub fn truth_table_antilogy<A: Atom>(f: &Formula<PropositionalLanguage<A>>) -> bool {
+        let mut iter = HashMapValuationIter::<PropositionalLanguage<A>>::from(get_atoms(f));
         loop {
             let result = evaluate::
                 <
-                PropositionalLanguage<Atom>,
+                PropositionalLanguage<A>,
                 bool,
                 BooleanInterpretation,
-                HashMapValuation<PropositionalLanguage<Atom>, bool>
+                HashMapValuation<PropositionalLanguage<A>, bool>
                 >(f, &iter.values);
             if result {
                 return false;
@@ -100,20 +94,18 @@ pub mod boolean_interpretation {
         true
     }
 
-    pub fn truth_table_repr
-        <Atom: FromStr + fmt::Display + Eq + std::hash::Hash + Clone, W: io::Write>
-            (f: &Formula<PropositionalLanguage<Atom>>, writer: &mut W) -> io::Result<()> {
-        let mut iter = HashMapValuationIter::<PropositionalLanguage<Atom>>::from(get_atoms(f));
+    pub fn truth_table_repr<A: Atom, W: io::Write>(f: &Formula<PropositionalLanguage<A>>, writer: &mut W) -> io::Result<()> {
+        let mut iter = HashMapValuationIter::<PropositionalLanguage<A>>::from(get_atoms(f));
         for a in iter.values.map.keys() {
             writer.write_all(format!("{}\t", a).as_bytes())?;
         }
         loop {
             let result = evaluate::
                 <
-                PropositionalLanguage<Atom>,
+                PropositionalLanguage<A>,
                 bool,
                 BooleanInterpretation,
-                HashMapValuation<PropositionalLanguage<Atom>, bool>
+                HashMapValuation<PropositionalLanguage<A>, bool>
                 >(f, &iter.values);
             writer.write_all("\n".as_bytes())?;
             for a in iter.values.map.values() {
@@ -128,11 +120,32 @@ pub mod boolean_interpretation {
         Ok(())
     }
     
-    pub fn truth_table_print
-        <Atom: FromStr + fmt::Display + Eq + std::hash::Hash + Clone>
-            (f: &Formula<PropositionalLanguage<Atom>>) -> io::Result<()> {
+    pub fn truth_table_print<A: Atom>(f: &Formula<PropositionalLanguage<A>>) -> io::Result<()> {
         let stdout = std::io::stdout(); // get the global stdout entity
         let mut writer = std::io::BufWriter::new(stdout); // optional: wrap that handle in a buffer
         truth_table_repr(f, &mut writer)
+    }
+
+    pub fn to_cnf<A: Atom>(f: &mut Formula<PropositionalLanguage<A>>) {
+        use super::super::replacement::*;
+        let rules: Vec<ReplacementRule<PropositionalLanguage<A>>> = vec![ // TODO find a way to make
+                                                                     // this static
+            make_rule("({F} => {G})", "(!{F} || {G})"),
+            make_rule("!!{F}", "{F}"),
+            make_rule("!({F} && {G})", "(!{F} || !{G})"),
+            make_rule("!({F} || {G})", "(!{F} && !{G})"),
+            make_rule("({F} || ({G} && {H}))", "(({F} || {G}) && ({F} || {H}))"),
+            make_rule("(({F} && {G}) || {H})", "(({F} || {H}) && ({G} || {H}))"),
+            make_rule("({F} || {F})", "{F}"),
+        ];
+        loop {
+            let changes = rules.iter()
+                .map(|rule| replace(rule, f))
+                .reduce(|a, b| a|b)
+                .unwrap_or(false);
+            if !changes {
+                break;
+            }
+        }
     }
 }
