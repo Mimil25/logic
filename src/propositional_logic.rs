@@ -58,9 +58,13 @@ pub mod boolean_interpretation {
 
 
     pub fn truth_table_repr<A: Atom, W: io::Write>(f: &Formula<PropositionalLanguage<A>>, writer: &mut W) -> io::Result<()> {
-        let mut iter = HashMapValuationIter::<PropositionalLanguage<A>>::from(HashSet::from_iter(f.iter()));
-        for a in iter.values.map.keys() {
-            writer.write_all(format!("{}\t", a).as_bytes())?;
+        let mut iter = HashMapValuationIter::<A>::from(f.iter().cloned());
+        let mut atoms = Vec::with_capacity(iter.values.data.len());
+        for a in f.iter() {
+            if !atoms.contains(&a) {
+                writer.write_all(format!("{}\t", a).as_bytes())?;
+                atoms.push(a);
+            }
         }
         loop {
             let result = evaluate::
@@ -68,10 +72,10 @@ pub mod boolean_interpretation {
                 PropositionalLanguage<A>,
                 bool,
                 BooleanInterpretation,
-                HashMapValuation<PropositionalLanguage<A>, bool>
+                HashMapValuation<A, bool>
                 >(f, &iter.values);
             writer.write_all("\n".as_bytes())?;
-            for a in iter.values.map.values() {
+            for a in iter.values.data.iter() {
                 writer.write_all(format!("{}\t", a).as_bytes())?;
             };
             writer.write_all(format!(" -> {}", result).as_bytes())?;

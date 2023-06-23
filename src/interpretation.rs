@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 use std::fmt::Debug;
 
-use crate::formula::{Language, Formula};
+use crate::formula::{Language, Atom, Formula};
 
 pub trait Interpretation<L: Language, Type> {
     fn unary(o: &L::UnaryOpp, a: Type) -> Type;
@@ -9,55 +9,45 @@ pub trait Interpretation<L: Language, Type> {
     fn function<I: Iterator<Item = Type>>(f: &L::Function, args: I) -> Type;
 }
 
-pub trait Valuation<L: Language, Type> {
-    fn valuation(&self, atom: &L::Atom) -> Type;
+pub trait Valuation<A: Atom, Type> {
+    fn valuation(&self, atom: &A) -> Type;
 }
 
 #[derive(Debug)]
-pub struct HashMapValuation<L: Language, Type: Debug> {
-    pub map: HashMap<L::Atom, Type>,
+pub struct HashMapValuation<A: Atom, Type: Debug> {
+    map: HashMap<A, usize>,
+    pub data: Vec<Type>
 }
 
-impl<L: Language, Type: Copy + Debug> Valuation<L, Type> for HashMapValuation<L, Type> {
-    fn valuation(&self, atom: &<L as Language>::Atom) -> Type {
-        *self.map.get(atom).unwrap()
+impl<A: Atom, Type: Copy + Debug> Valuation<A, Type> for HashMapValuation<A, Type> {
+    fn valuation(&self, atom: &A) -> Type {
+        self.data[*self.map.get(atom).unwrap()]
     }
 }
 
-impl<L: Language, Type: Debug> TryFrom<HashMap<&str, Type>> for HashMapValuation<L, Type> {
-    type Error = <L::Atom as std::str::FromStr>::Err;
-    fn try_from(value: HashMap<&str, Type>) -> Result<Self, Self::Error> {
-        let mut map = Vec::with_capacity(value.len());
-        for (k, v) in value.into_iter() {
-            map.push((k.parse()?, v));
-        }
-        Ok(Self { map: map.into_iter().collect() })
-    }
-}
-
-impl<L: Language> IntoIterator for HashMapValuation<L, bool> {
-    type IntoIter = HashMapValuationIter<L>;
+impl<A: Atom> IntoIterator for HashMapValuation<A, bool> {
+    type IntoIter = HashMapValuationIter<A>;
     type Item = <Self::IntoIter as Iterator>::Item;
     fn into_iter(mut self) -> Self::IntoIter { 
-        for (_, v) in self.map.iter_mut() {
+        for v in self.data.iter_mut() {
             *v = false;
         }
-        HashMapValuationIter::<L> {
+        HashMapValuationIter::<A> {
             values: self,
         }
     }
 }
 
-pub struct HashMapValuationIter<L: Language> {
-    pub values: HashMapValuation<L, bool>,
+pub struct HashMapValuationIter<A: Atom> {
+    pub values: HashMapValuation<A, bool>,
 }
 
-impl<L: Language> Iterator for HashMapValuationIter<L> {
+impl<A: Atom> Iterator for HashMapValuationIter<A> {
     type Item = ();
     // set the values to their next position
     fn next(&mut self) -> Option<Self::Item> {
         let mut carry = true;
-        for (_, v) in self.values.map.iter_mut() {
+        for v in self.values.data.iter_mut() {
             let t = *v;
             *v ^= carry;
             carry &= t;
@@ -70,13 +60,21 @@ impl<L: Language> Iterator for HashMapValuationIter<L> {
     }
 }
 
-impl<L: Language> From<HashSet<&L::Atom>> for HashMapValuationIter<L> {
-    fn from(value: HashSet<&L::Atom>) -> Self {
+impl<I: Iterator> From<I> for HashMapValuationIter<I::Item> where I::Item: Atom{
+    fn from(value: I) -> Self {
+        let vals: Vec<I::Item> = value.collect();
+        let map: HashMap<I::Item, usize> = vals.iter()
+            .enumerate()
+            .filter(|(i, a)| !vals[0..*i].contains(a))
+            .map(|(_, a)| a)
+            .enumerate()
+            .map(|(i, a)| (a.to_owned(), i))
+            .collect();
+        let n = map.len();
         Self {
             values: HashMapValuation {
-                map: value.into_iter()
-                    .map(|a| (a.clone(), false))
-                    .collect()
+                map,
+                data: Vec::from_iter((0..n).map(|_| false)),
             }
         }
     }
@@ -85,7 +83,7 @@ impl<L: Language> From<HashSet<&L::Atom>> for HashMapValuationIter<L> {
 pub fn evaluate<L: Language,
             Type, 
             I: Interpretation<L, Type>,
-            V: Valuation<L, Type>>
+            V: Valuation<L::Atom, Type>>
             (
                 f: &Formula<L>,
                 v: &V
