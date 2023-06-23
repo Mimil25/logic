@@ -5,7 +5,7 @@ pub struct Variable {
     name: String,
 }
 
-pub trait Atom: fmt::Display + Clone + PartialEq + Eq + FromStr + std::hash::Hash{}
+pub trait Atom: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + FromStr + std::hash::Hash{}
 
 impl fmt::Display for Variable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -26,7 +26,7 @@ impl FromStr for Variable {
 
 impl Atom for Variable {}
 
-pub trait Language: std::cmp::PartialEq + std::clone::Clone {
+pub trait Language: std::cmp::PartialEq + std::clone::Clone + std::fmt::Debug {
     type Atom: Atom;
     type UnaryOpp: fmt::Display + FromStr + Eq + PartialEq + Clone;
     type BinaryOpp: fmt::Display + FromStr + Eq + PartialEq + Clone;
@@ -65,12 +65,16 @@ impl<'a, L: Language> Iterator for FormulaIterator<'a, L> {
             Some(iter) => {
                 let next = iter.next();
                 if next.is_none() {
+                    self.i += 1;
                     self.nested = None;
+                } else {
+                    return next;
                 }
-                return next;
             },
             None => {},
         }
+
+
         match self.f {
             Formula::Atom(a) => {
                 if self.i != 0 {
@@ -84,16 +88,13 @@ impl<'a, L: Language> Iterator for FormulaIterator<'a, L> {
                 if self.i != 0 {
                     None
                 } else {
-                    let mut nested = Self {
+                    let nested = Self {
                         f: next,
                         i: 0,
                         nested: None,
                     };
-                    let r = nested.next();
-                    if r.is_some() {
-                        self.nested = Some(Box::new(nested));
-                    }
-                    r
+                    self.nested = Some(Box::new(nested));
+                    self.next()
                 }
             }
             Formula::BinaryOpp(a, _, b) => {
@@ -104,29 +105,23 @@ impl<'a, L: Language> Iterator for FormulaIterator<'a, L> {
                 } else {
                     return None;
                 };
-                let mut nested = Self {
+                let nested = Self {
                     f: r,
                     i: 0,
                     nested: None,
                 };
-                let r = nested.next();
-                if r.is_some() {
-                    self.nested = Some(Box::new(nested));
-                }
-                r
+                self.nested = Some(Box::new(nested));
+                self.next()
             }
             Formula::Function(_, args) => {
                 if self.i < args.len() {
-                    let mut nested = Self {
+                    let nested = Self {
                         f: &args[self.i],
                         i: 0,
                         nested: None,
                     };
-                    let r = nested.next();
-                    if r.is_some() {
-                        self.nested = Some(Box::new(nested));
-                    }
-                    r
+                    self.nested = Some(Box::new(nested));
+                    self.next()
                 } else {
                     None
                 }

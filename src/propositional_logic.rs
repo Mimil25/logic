@@ -58,7 +58,7 @@ pub mod boolean_interpretation {
 
 
     pub fn truth_table_repr<A: Atom, W: io::Write>(f: &Formula<PropositionalLanguage<A>>, writer: &mut W) -> io::Result<()> {
-        let mut iter = HashMapValuationIter::<PropositionalLanguage<A>>::from(HashSet::from(&f.iter().collect::<Vec<_>>()[..]));
+        let mut iter = HashMapValuationIter::<PropositionalLanguage<A>>::from(HashSet::from_iter(f.iter()));
         for a in iter.values.map.keys() {
             writer.write_all(format!("{}\t", a).as_bytes())?;
         }
@@ -93,6 +93,7 @@ pub mod boolean_interpretation {
         use super::super::replacement::*;
         let rules: Vec<ReplacementRule<PropositionalLanguage<A>>> = vec![ // TODO find a way to make
                                                                      // this static
+            make_rule("({F} <=> {G})", "(({F} => {G}) && ({G} => {F}))"),
             make_rule("({F} => {G})", "(!{F} || {G})"),
             make_rule("!!{F}", "{F}"),
             make_rule("!({F} && {G})", "(!{F} || !{G})"),
@@ -113,6 +114,27 @@ pub mod boolean_interpretation {
     }
     
     pub fn to_dnf<A: Atom>(f: &mut Formula<PropositionalLanguage<A>>) {
-        *f = Formula::UnaryOpp(Neg, Box::new(f));
+        use super::super::replacement::*;
+        let rules: Vec<ReplacementRule<PropositionalLanguage<A>>> = vec![ // TODO find a way to make
+                                                                     // this static
+            make_rule("!!{F}", "{F}"),
+            make_rule("!({F} && {G})", "(!{F} || !{G})"),
+            make_rule("!({F} || {G})", "(!{F} && !{G})"),
+            make_rule("({F} || {F})", "{F}"),
+        ];
+        let mut n = f.to_owned();
+        n = Formula::UnaryOpp(Neg, Box::new(n));
+        to_cnf(f);
+        n = Formula::UnaryOpp(Neg, Box::new(n));
+        *f = n;
+        loop {
+            let changes = rules.iter()
+                .map(|rule| replace(rule, f))
+                .reduce(|a, b| a|b)
+                .unwrap_or(false);
+            if !changes {
+                break;
+            }
+        }
     }
 }

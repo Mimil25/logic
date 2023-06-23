@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
 
 use crate::formula::{Language, Formula};
 
@@ -13,17 +14,17 @@ pub trait Valuation<L: Language, Type> {
 }
 
 #[derive(Debug)]
-pub struct HashMapValuation<L: Language, Type> {
+pub struct HashMapValuation<L: Language, Type: Debug> {
     pub map: HashMap<L::Atom, Type>,
 }
 
-impl<L: Language, Type: Copy> Valuation<L, Type> for HashMapValuation<L, Type> {
+impl<L: Language, Type: Copy + Debug> Valuation<L, Type> for HashMapValuation<L, Type> {
     fn valuation(&self, atom: &<L as Language>::Atom) -> Type {
         *self.map.get(atom).unwrap()
     }
 }
 
-impl<L: Language, Type> TryFrom<HashMap<&str, Type>> for HashMapValuation<L, Type> {
+impl<L: Language, Type: Debug> TryFrom<HashMap<&str, Type>> for HashMapValuation<L, Type> {
     type Error = <L::Atom as std::str::FromStr>::Err;
     fn try_from(value: HashMap<&str, Type>) -> Result<Self, Self::Error> {
         let mut map = Vec::with_capacity(value.len());

@@ -15,7 +15,7 @@ impl<A: Atom> std::fmt::Display for PaternAtom<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             PaternAtom::Any{name, id} => f.write_str(format!("{{{}:{}}}", name, id).as_str()),
-            PaternAtom::Atom(atom) => atom.fmt(f),
+            PaternAtom::Atom(atom) => (atom as &dyn std::fmt::Display).fmt(f),
         }
     }
 }
@@ -38,7 +38,7 @@ impl<A: Atom> std::str::FromStr for PaternAtom<A> {
 
 impl<A: Atom> Atom for PaternAtom<A> {}
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 struct Patern<L: Language> {
     _phantom_data: std::marker::PhantomData<L>,
 }
