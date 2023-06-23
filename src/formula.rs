@@ -30,7 +30,7 @@ pub trait Language: std::cmp::PartialEq + std::clone::Clone + std::fmt::Debug {
     type Atom: Atom;
     type UnaryOpp: fmt::Display + FromStr + Eq + PartialEq + Clone;
     type BinaryOpp: fmt::Display + FromStr + Eq + PartialEq + Clone;
-    type Function: fmt::Display + FromStr + Eq + PartialEq + Clone;
+    type Function: fmt::Debug + fmt::Display + FromStr + Eq + PartialEq + Clone;
 }
 
 pub fn is_symbol<L: Language>(s: &str) -> bool {
@@ -167,7 +167,7 @@ fn parse_from_symboles<'a, L: Language>(symbols: &'a [&'a str]) -> Result<(Formu
     }
     if symbols[0] == "(" {
         let (lhs, lhs_len) = parse_from_symboles::<L>(&symbols[1..])?;
-        if symbols.len() <= lhs_len + 2 {
+        if symbols.len() <= lhs_len + 1 {
             return Err(String::from("unexpected end of source"));
         }
         if symbols[lhs_len + 1] == ")" {
