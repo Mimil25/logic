@@ -1,26 +1,31 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, borrow::Cow};
 
 use crate::formula::*;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-enum PaternAtom<A: Atom> {
+enum PatternAtom<A: Atom> {
     Atom(A), // must be an exact match
     Any{
         name: String, // name of the replacement
         id: usize,
     },
+    AnyArgs {
+        name: String, // name of the replacement
+        id: usize,
+    },
 }
 
-impl<A: Atom> std::fmt::Display for PaternAtom<A> {
+impl<A: Atom> std::fmt::Display for PatternAtom<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PaternAtom::Any{name, id} => f.write_str(format!("{{{}:{}}}", name, id).as_str()),
-            PaternAtom::Atom(atom) => (atom as &dyn std::fmt::Display).fmt(f),
+            PatternAtom::Any{name, id} => f.write_str(format!("{{{}:{}}}", name, id).as_str()),
+            PatternAtom::AnyArgs { name, id } => f.write_str(format!("{{*{}:{}}}", name, id).as_str()),
+            PatternAtom::Atom(atom) => (atom as &dyn std::fmt::Display).fmt(f),
         }
     }
 }
 
-impl<A: Atom> std::str::FromStr for PaternAtom<A> {
+impl<A: Atom> std::str::FromStr for PatternAtom<A> {
     type Err = A::Err;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.len() > 2 &&
@@ -28,31 +33,34 @@ impl<A: Atom> std::str::FromStr for PaternAtom<A> {
             s.ends_with('}') &&
             !s[1..].contains('{') &&
             !s[..(s.len() - 1)].contains('}') {
-            
-            Ok(PaternAtom::Any{name:s[1..s.len()-1].to_string(), id:0})
+            if s.starts_with("{*") {
+                Ok(PatternAtom::AnyArgs {name:s[2..s.len()-1].to_string(), id:0})
+            } else {
+                Ok(PatternAtom::Any{name:s[1..s.len()-1].to_string(), id:0})
+            }
         } else {
-            A::from_str(s).map(|a| PaternAtom::Atom(a))
+            A::from_str(s).map(|a| PatternAtom::Atom(a))
         }
     }
 }
 
-impl<A: Atom> Atom for PaternAtom<A> {}
+impl<A: Atom> Atom for PatternAtom<A> {}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-struct Patern<L: Language> {
+struct Pattern<L: Language> {
     _phantom_data: std::marker::PhantomData<L>,
 }
 
-impl<L: Language> Language for Patern<L> {
-    type Atom = PaternAtom<L::Atom>;
+impl<L: Language> Language for Pattern<L> {
+    type Atom = PatternAtom<L::Atom>;
     type UnaryOpp = L::UnaryOpp;
     type BinaryOpp = L::BinaryOpp;
     type Function = L::Function;
 }
 
 pub struct ReplacementRule<L: Language> {
-    pat: Formula<Patern<L>>,
-    replacement: Formula<Patern<L>>,
+    pat: Formula<Pattern<L>>,
+    replacement: Formula<Pattern<L>>,
     nb_pat_atoms: usize
 }
 
@@ -73,8 +81,9 @@ pub fn make_rule<L: Language>(pat: &str, replacement: &str) -> ReplacementRule<L
         .into_iter()
         .for_each(|a| {
             match a {
-                PaternAtom::Atom(_) => {},
-                PaternAtom::Any { name, id } => {
+                PatternAtom::Atom(_) => {},
+                PatternAtom::AnyArgs { name, id } |
+                PatternAtom::Any { name, id } => {
                     *id = ids.get(name.as_str())
                         .copied()
                         .unwrap_or_else(|| {
@@ -90,8 +99,9 @@ pub fn make_rule<L: Language>(pat: &str, replacement: &str) -> ReplacementRule<L
         .into_iter()
         .for_each(|a| {
             match a {
-                PaternAtom::Atom(_) => {},
-                PaternAtom::Any { name, id } => {
+                PatternAtom::Atom(_) => {},
+                PatternAtom::AnyArgs { name, id } |
+                PatternAtom::Any { name, id } => {
                     *id = ids.get(name.as_str())
                         .copied()
                         .unwrap();
@@ -101,15 +111,15 @@ pub fn make_rule<L: Language>(pat: &str, replacement: &str) -> ReplacementRule<L
     rule
 }
 
-fn match_rule<'a, L: Language>(pat: &Formula<Patern<L>>, f: &'a Formula<L>, matches: &mut Vec<Option<&'a Formula<L>>>) -> bool {
+fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, matches: &mut Vec<Option<Cow<'a, Formula<L>>>>) -> bool {
     match (pat, f) {
-        (Formula::Atom(PaternAtom::Any { name:_, id }), f) => {
-            match matches[*id] {
+        (Formula::Atom(PatternAtom::Any { name:_, id }), f) => {
+            match &matches[*id] {
                 Some(f2) => {
-                    return *f == *f2;
+                    return *f == **f2;
                 },
                 None => {
-                    matches[*id] = Some(f);
+                    matches[*id] = Some(Cow::Borrowed(f));
                 }
             }
             true
@@ -130,6 +140,48 @@ fn match_rule<'a, L: Language>(pat: &Formula<Patern<L>>, f: &'a Formula<L>, matc
             if fp != ff {
                 return false;
             }
+            if p_args.is_empty() && f_args.is_empty() {
+            }
+            if !p_args.is_empty() {
+                if let Formula::Atom(PatternAtom::AnyArgs { name:_, id }) = p_args[0] {
+                    println!("args pattern matched");
+                    match matches[id] {
+                        Some(_) => panic!("not implemented yet"),
+                        None => {
+                            let mut used_args: Vec<usize> = Vec::new();
+                            for p_arg in p_args[1..].iter() {
+                                let mut match_found = false;
+                                for (i, f_arg) in f_args.iter().enumerate() {
+                                    if !used_args.contains(&i) {
+                                        let mut tmp_matches = matches.clone();
+                                        if match_rule(p_arg, f_arg, &mut tmp_matches) {
+                                            used_args.push(i);
+                                            match_found = true;
+                                            *matches = tmp_matches;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if !match_found {
+                                    println!("args pattern didn't match");
+                                    return false;
+                                }
+                            }
+                            matches[id] = Some(Cow::Owned(Formula::Function(
+                                    ff.clone(),
+                                    f_args.iter()
+                                        .enumerate()
+                                        .filter(|(i,_)| !used_args.contains(i))
+                                        .map(|(_, a)| a)
+                                        .cloned()
+                                        .collect(),
+                                    )));
+                            println!("match : {}", *matches[id].as_ref().unwrap());
+                            return true;
+                        }
+                    }
+                }
+            }
             return p_args
                 .iter()
                 .zip(f_args.iter())
@@ -139,10 +191,15 @@ fn match_rule<'a, L: Language>(pat: &Formula<Patern<L>>, f: &'a Formula<L>, matc
     }
 }
 
-fn from_patern<L: Language>(pat: &Formula<Patern<L>>, matches: &Vec<Option<&Formula<L>>>) -> Formula<L> {
+fn from_patern<L: Language>(pat: &Formula<Pattern<L>>, matches: &Vec<Option<Cow<Formula<L>>>>) -> Formula<L> {
     match pat {
-        Formula::Atom(PaternAtom::Any { name:_, id }) => matches[*id].unwrap().clone(),
-        Formula::Atom(PaternAtom::Atom(a)) => Formula::Atom(a.clone()),
+        Formula::Atom(PatternAtom::Any { name, id }) => match &matches[*id] {
+            Some(Cow::Owned(a)) => a.clone().to_owned(),
+            Some(Cow::Borrowed(a)) => a.clone().to_owned(),
+            None => panic!("patern {} not matched", name)
+        },
+        Formula::Atom(PatternAtom::AnyArgs { name:_, id:_ }) => panic!("unexpected AnyArgs"),
+        Formula::Atom(PatternAtom::Atom(a)) => Formula::Atom(a.clone()),
         Formula::UnaryOpp(o, f) => Formula::UnaryOpp(
             o.clone(),
             Box::new(from_patern(f, matches))),
@@ -150,9 +207,27 @@ fn from_patern<L: Language>(pat: &Formula<Patern<L>>, matches: &Vec<Option<&Form
             Box::new(from_patern(a, matches)),
             o.clone(),
             Box::new(from_patern(b, matches))),
-        Formula::Function(f, args) => Formula::Function(
-            f.clone(),
-            args.iter().map(|a| from_patern(a, matches)).collect()),
+        Formula::Function(f, args) => {
+            println!("here");
+            if !args.is_empty() {
+                if let Formula::Atom(PatternAtom::AnyArgs { name:_, id }) = args[0] {
+                    if let Cow::Owned(Formula::Function(tmp_f, tmp_args)) = matches[id].as_ref().unwrap() {
+                        assert_eq!(f, tmp_f);
+                        let args = [tmp_args.clone(), args[1..].iter().map(|a| from_patern(a, matches)).collect()].concat();
+                        return Formula::Function(
+                            f.clone(),
+                            args,
+                        );
+                    } else {
+                        panic!("{} should have been a function", matches[id].as_ref().unwrap());
+                    }
+                }
+            }
+            Formula::Function(
+                f.clone(),
+                args.iter().map(|a| from_patern(a, matches)).collect()
+            )
+        },
     }
 }
 

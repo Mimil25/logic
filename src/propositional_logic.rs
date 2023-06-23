@@ -21,7 +21,6 @@ impl<A: Atom> Language for PropositionalLanguage<A> {
 
 pub mod boolean_interpretation {
     use std::io;
-    use std::collections::HashSet;
     use std::ops::{Not, BitAnd, BitOr};
 
     use crate::formula::{Formula, Atom};
@@ -105,6 +104,7 @@ pub mod boolean_interpretation {
             make_rule("({F} || ({G} && {H}))", "(({F} || {G}) && ({F} || {H}))"),
             make_rule("(({F} && {G}) || {H})", "(({F} || {H}) && ({G} || {H}))"),
             make_rule("({F} || {F})", "{F}"),
+            make_rule("(ALL({*args}) && {A})", "ALL({*args}, {A})"),
         ];
         loop {
             let changes = rules.iter()
