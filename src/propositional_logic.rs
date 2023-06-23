@@ -21,9 +21,11 @@ impl<A: Atom> Language for PropositionalLanguage<A> {
 
 pub mod boolean_interpretation {
     use std::io;
+    use std::collections::HashSet;
     use std::ops::{Not, BitAnd, BitOr};
 
-    use crate::formula::{Formula, Atom, get_atoms};
+    use crate::formula::{Formula, Atom};
+    use crate::opperators::Neg;
 
     use super::super::interpretation::*;
     use super::PropositionalLanguage;
@@ -54,48 +56,9 @@ pub mod boolean_interpretation {
         }
     }
 
-    pub fn truth_table_totology<A: Atom>(f: &Formula<PropositionalLanguage<A>>) -> bool {
-        let mut iter = HashMapValuationIter::<PropositionalLanguage<A>>::from(get_atoms(f));
-        loop {
-            let result = evaluate::
-                <
-                PropositionalLanguage<A>,
-                bool,
-                BooleanInterpretation,
-                HashMapValuation<PropositionalLanguage<A>, bool>
-                >(f, &iter.values);
-            if !result {
-                return false;
-            }
-            if iter.next().is_none() {
-                break;
-            }
-        }
-        true
-    }
-
-    pub fn truth_table_antilogy<A: Atom>(f: &Formula<PropositionalLanguage<A>>) -> bool {
-        let mut iter = HashMapValuationIter::<PropositionalLanguage<A>>::from(get_atoms(f));
-        loop {
-            let result = evaluate::
-                <
-                PropositionalLanguage<A>,
-                bool,
-                BooleanInterpretation,
-                HashMapValuation<PropositionalLanguage<A>, bool>
-                >(f, &iter.values);
-            if result {
-                return false;
-            }
-            if iter.next().is_none() {
-                break;
-            }
-        }
-        true
-    }
 
     pub fn truth_table_repr<A: Atom, W: io::Write>(f: &Formula<PropositionalLanguage<A>>, writer: &mut W) -> io::Result<()> {
-        let mut iter = HashMapValuationIter::<PropositionalLanguage<A>>::from(get_atoms(f));
+        let mut iter = HashMapValuationIter::<PropositionalLanguage<A>>::from(HashSet::from(&f.iter().collect::<Vec<_>>()[..]));
         for a in iter.values.map.keys() {
             writer.write_all(format!("{}\t", a).as_bytes())?;
         }
@@ -147,5 +110,9 @@ pub mod boolean_interpretation {
                 break;
             }
         }
+    }
+    
+    pub fn to_dnf<A: Atom>(f: &mut Formula<PropositionalLanguage<A>>) {
+        *f = Formula::UnaryOpp(Neg, Box::new(f));
     }
 }

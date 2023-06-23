@@ -69,7 +69,7 @@ pub fn make_rule<L: Language>(pat: &str, replacement: &str) -> ReplacementRule<L
         nb_pat_atoms: 0,
     };
     let mut ids = HashMap::new();
-    get_atoms_mut(&mut rule.pat)
+    rule.pat.get_atoms_mut()
         .into_iter()
         .for_each(|a| {
             match a {
@@ -86,7 +86,7 @@ pub fn make_rule<L: Language>(pat: &str, replacement: &str) -> ReplacementRule<L
             }
         });
     rule.nb_pat_atoms = ids.len();
-    get_atoms_mut(&mut rule.replacement)
+    rule.replacement.get_atoms_mut()
         .into_iter()
         .for_each(|a| {
             match a {

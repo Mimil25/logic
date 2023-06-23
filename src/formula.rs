@@ -1,4 +1,4 @@
-use std::{fmt, str::FromStr, collections::HashSet};
+use std::{fmt, str::FromStr};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Variable {
@@ -52,7 +52,7 @@ pub enum Formula<L: Language> {
 }
 
 
-pub struct FormulaIterator<'a, L: Language> {
+struct FormulaIterator<'a, L: Language> {
     f: &'a Formula<L>,
     i: usize,
     nested: Option<Box<FormulaIterator<'a, L>>>,
@@ -135,46 +135,34 @@ impl<'a, L: Language> Iterator for FormulaIterator<'a, L> {
     }
 }
 
-
-pub fn get_atoms<L: Language>(f: &Formula<L>) -> HashSet<&L::Atom> {
-    match f {
-        Formula::Atom(a) => HashSet::from([a]),
-        Formula::UnaryOpp(_, a) => get_atoms(a),
-        Formula::BinaryOpp(a, _, b) => {
-            let mut set = get_atoms(a);
-            get_atoms(b)
-                .into_iter()
-                .collect_into(&mut set);
-            set
-        },
-        Formula::Function(_, args) => args.iter()
-            .map(|arg| { get_atoms(arg) })
-            .reduce(|mut a, b| {
-                b.into_iter().collect_into(&mut a);
-                a
-            })
-            .unwrap_or_default(),
+impl<L: Language> Formula<L> {
+    pub fn iter(&self) -> impl Iterator<Item = &L::Atom> {
+        FormulaIterator {
+            f: self,
+            i: 0,
+            nested: None,
+        }
     }
-}
-
-pub fn get_atoms_mut<L: Language>(f: &mut Formula<L>) -> Vec<&mut L::Atom> {
-    match f {
-        Formula::Atom(a) => Vec::from([&mut*a]),
-        Formula::UnaryOpp(_, a) => get_atoms_mut(a),
-        Formula::BinaryOpp(a, _, b) => {
-            let mut set = get_atoms_mut(a);
-            get_atoms_mut(b)
-                .into_iter()
-                .collect_into(&mut set);
-            set
-        },
-        Formula::Function(_, args) => args.iter_mut()
-            .map(|arg| { get_atoms_mut(arg) })
-            .reduce(|mut a, b| {
-                b.into_iter().collect_into(&mut a);
-                a
-            })
-            .unwrap_or_default(),
+    
+    pub fn get_atoms_mut(&mut self) -> Vec<&mut L::Atom> {
+        match self {
+            Formula::Atom(a) => Vec::from([&mut*a]),
+            Formula::UnaryOpp(_, a) => a.get_atoms_mut(),
+            Formula::BinaryOpp(a, _, b) => {
+                let mut set = a.get_atoms_mut();
+                b.get_atoms_mut()
+                    .into_iter()
+                    .collect_into(&mut set);
+                set
+            },
+            Formula::Function(_, args) => args.iter_mut()
+                .map(|arg| { arg.get_atoms_mut() })
+                .reduce(|mut a, b| {
+                    b.into_iter().collect_into(&mut a);
+                    a
+                })
+                .unwrap_or_default(),
+        }
     }
 }
 
