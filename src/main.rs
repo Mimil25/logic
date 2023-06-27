@@ -1,16 +1,18 @@
 #![feature(iter_collect_into)]
 #![feature(inherent_associated_types)]
+#![feature(generic_const_exprs)]
 mod formula;
 mod interpretation;
 mod opperators;
 mod propositional_logic;
 mod replacement;
+mod sudoku;
 
 use std::io::Write;
 
 use formula::*;
 use propositional_logic::PropositionalLanguage;
-use propositional_logic::boolean_interpretation::{truth_table_print, to_cnf};
+use propositional_logic::boolean_interpretation::{truth_table_print, resolve};
 
 fn main() {
     loop {
@@ -23,7 +25,7 @@ fn main() {
             Ok(mut f) => {
                 println!("{}", f);
                 truth_table_print(&f).unwrap();
-                to_cnf(&mut f);
+                resolve(&mut f);
                 println!("{}", f);
                 truth_table_print(&f).unwrap();
             },

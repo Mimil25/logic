@@ -242,7 +242,7 @@ fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, mat
                     }
                 }
             }
-            return p_args
+            return p_args.len() == f_args.len() && p_args
                 .iter()
                 .zip(f_args.iter())
                 .all(|(p, f)| match_rule(p, f, matches));
@@ -268,35 +268,33 @@ fn from_patern<L: Language>(pat: &Formula<Pattern<L>>, matches: &Vec<Option<Cow<
             o.clone(),
             Box::new(from_patern(b, matches))),
         Formula::Function(f, args) => {
-            if !args.is_empty() {
-                if let Formula::Atom(PatternAtom::AnyArgs { name:_, arg:_, id, pattern }) = &args[0] {
-                    if let Cow::Owned(Formula::Function(tmp_f, tmp_args)) = matches[*id].as_ref().unwrap() {
-                        assert_eq!(f, tmp_f);
-                        let mut tmp_matches = matches.clone();
-                        let args = tmp_args.iter().map(|a| { // generic arguments from the matched
-                                                      // function
-                                tmp_matches.push(Some(Cow::Borrowed(a)));
-                                let f = from_patern(pattern, &tmp_matches);
-                                tmp_matches.pop();
-                                f
-                            })
-                        .chain(
-                            args[1..].iter().map(|a| { // direct argument of the pattern
-                                from_patern(a, matches)
-                            })).collect();
-                        return Formula::Function(
-                            f.clone(),
-                            args,
-                        );
-                    } else {
-                        panic!("{} should have been a function", matches[*id].as_ref().unwrap());
-                    }
-                }
-                println!("here");
-            }
             Formula::Function(
                 f.clone(),
-                args.iter().map(|a| from_patern(a, matches)).collect()
+                args.iter().map(|a| {
+                    if let Formula::Atom(PatternAtom::AnyArgs { name:_, arg:_, id, pattern }) = a {
+                        if let Cow::Owned(Formula::Function(tmp_f, tmp_args)) = matches[*id].as_ref().unwrap() {
+                            let mut tmp_matches = matches.clone();
+                            let args = tmp_args.iter().map(move |a| { // generic arguments from the matched
+                                                        // function
+                                    tmp_matches.push(Some(Cow::Borrowed(a)));
+                                    let f = from_patern(pattern, &tmp_matches);
+                                    tmp_matches.pop();
+                                    f
+                                }).collect::<Vec<_>>().into_iter();
+                            Err(args)
+                        } else {
+                            panic!("{} should have been a function", matches[*id].as_ref().unwrap());
+                        }
+                    } else {
+                        Ok([from_patern(a, matches)].into_iter())
+                    }
+                }).fold(Vec::new(), |mut v, iter| {
+                    match iter {
+                        Ok(iter) => iter.for_each(|f| v.push(f)),
+                        Err(iter) => iter.for_each(|f| v.push(f))
+                    }
+                    v
+                })
             )
         },
     }

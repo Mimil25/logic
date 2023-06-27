@@ -24,7 +24,6 @@ pub mod boolean_interpretation {
     use std::ops::{Not, BitAnd, BitOr};
 
     use crate::formula::{Formula, Atom};
-    use crate::opperators::Neg;
 
     use super::super::interpretation::*;
     use super::PropositionalLanguage;
@@ -32,7 +31,7 @@ pub mod boolean_interpretation {
     pub struct BooleanInterpretation;
 
     impl<
-        Type: Copy + Not<Output = Type> + BitAnd<Output = Type> + BitOr<Output = Type>,
+        Type: Copy + Not<Output = Type> + BitAnd<Output = Type> + BitOr<Output = Type> + Default,
         A: Atom
     > Interpretation<PropositionalLanguage<A>, Type> for BooleanInterpretation {
         fn unary(_o: &<PropositionalLanguage<A> as crate::formula::Language>::UnaryOpp, a: Type) -> Type {
@@ -49,8 +48,8 @@ pub mod boolean_interpretation {
 
         fn function<I: Iterator<Item = Type>>(f: &<PropositionalLanguage<A> as crate::formula::Language>::Function, args: I) -> Type {
             match f {
-                super::PLFuncs::Conjuction(_) => args.reduce(BitAnd::bitand).unwrap(),
-                super::PLFuncs::Disjuction(_) => args.reduce(BitOr::bitor).unwrap(),
+                super::PLFuncs::Conjuction(_) => args.reduce(BitAnd::bitand).unwrap_or(!Type::default()),
+                super::PLFuncs::Disjuction(_) => args.reduce(BitOr::bitor).unwrap_or_else(Type::default),
             }
         }
     }
@@ -92,57 +91,45 @@ pub mod boolean_interpretation {
         truth_table_repr(f, &mut writer)
     }
 
-    pub fn to_cnf<A: Atom>(f: &mut Formula<PropositionalLanguage<A>>) {
+    pub fn resolve<A: Atom>(f: &mut Formula<PropositionalLanguage<A>>) {
         use super::super::replacement::*;
         let rules: Vec<ReplacementRule<PropositionalLanguage<A>>> = vec![ // TODO find a way to make
                                                                      // this static
+            // degradations of implications
             make_rule("({F} <=> {G})", "(({F} => {G}) && ({G} => {F}))"),
             make_rule("({F} => {G})", "(!{F} || {G})"),
+            
+            // simplification of double negation
             make_rule("!!{F}", "{F}"),
             
+            // propagation of comutativity
             make_rule("({A} && {B})", "ALL({A}, {B})"),
             make_rule("({A} || {B})", "ANY({A}, {B})"),
-            make_rule("(ALL({*args*}) && {A})", "ALL({*args*}, {A})"),
-            make_rule("(ANY({*args*}) || {A})", "ANY({*args*}, {A})"),
-            make_rule("({A} && ALL({*args*}))", "ALL({*args*}, {A})"),
-            make_rule("({A} || ANY({*args*}))", "ANY({*args*}, {A})"),
+            make_rule("ALL({*args*}, ALL({*args2*}))", "ALL({*args*}, {*args2*})"),
+            make_rule("ANY({*args*}, ANY({*args2*}))", "ANY({*args*}, {*args2*})"),
             
+            // simplification of double apparitions
             make_rule("ALL({*args*}, {A}, {A})", "ALL({*args*}, {A})"),
             make_rule("ANY({*args*}, {A}, {A})", "ANY({*args*}, {A})"),
-            
-            make_rule("(ALL({*args*}) || {A})", "ALL({*args:ARG:({ARG} || {A})*})"),
-            make_rule("({A} || ALL({*args*}))", "ALL({*args:ARG:({ARG} || {A})*})"),
 
+            // simplification of atomic junctions
+            make_rule("ALL({A})", "{A}"),
+            make_rule("ANY({A})", "{A}"),
+            
+            // distribution of negation
+            make_rule("!ALL({*args*})", "ANY({*args:ARG:!{ARG}*})"),
+            make_rule("!ANY({*args*})", "AND({*args:ARG:!{ARG}*})"),
+
+            // distribution of disjuctions
+            make_rule("ANY({*disjunction*}, {A}, ALL({*conjuction*}))","ANY({*disjunction*}, ALL({*conjuction:ARG:ANY({A}, {ARG})*}))"),
+
+            // the folowing rules can eleminate atoms and introduce TRUE and FALSE
+            // using them may resolve a satement and is not rewriting
             make_rule("ALL({*args*}, FALSE)", "FALSE"),
             make_rule("ANY({*args*}, TRUE)", "TRUE"),
             make_rule("ALL({*args*}, {A}, !{A})", "FALSE"),
             make_rule("ANY({*args*}, {A}, !{A})", "TRUE"),
         ];
-        loop {
-            let changes = rules.iter()
-                .map(|rule| replace(rule, f))
-                .reduce(|a, b| a|b)
-                .unwrap_or(false);
-            if !changes {
-                break;
-            }
-        }
-    }
-    
-    pub fn to_dnf<A: Atom>(f: &mut Formula<PropositionalLanguage<A>>) {
-        use super::super::replacement::*;
-        let rules: Vec<ReplacementRule<PropositionalLanguage<A>>> = vec![ // TODO find a way to make
-                                                                     // this static
-            make_rule("!!{F}", "{F}"),
-            make_rule("!({F} && {G})", "(!{F} || !{G})"),
-            make_rule("!({F} || {G})", "(!{F} && !{G})"),
-            make_rule("({F} || {F})", "{F}"),
-        ];
-        let mut n = f.to_owned();
-        n = Formula::UnaryOpp(Neg, Box::new(n));
-        to_cnf(f);
-        n = Formula::UnaryOpp(Neg, Box::new(n));
-        *f = n;
         loop {
             let changes = rules.iter()
                 .map(|rule| replace(rule, f))
