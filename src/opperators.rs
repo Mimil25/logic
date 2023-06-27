@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 macro_rules! opp {
     ($name:ident, $symbol:literal) => {
-        #[derive(Debug, Eq, PartialEq, Clone)]
+        #[derive(Debug, Eq, PartialEq, Hash, Clone)]
         pub struct $name;
 
         impl fmt::Display for $name {
@@ -27,7 +27,7 @@ macro_rules! opp {
 
 macro_rules! group_opps {
     ($name:ident, $($opp:ident),+) => {
-        #[derive(Debug, Eq, PartialEq, Clone)]
+        #[derive(Debug, Eq, PartialEq, Hash, Clone)]
         pub enum $name {
             $(
                 $opp($opp),

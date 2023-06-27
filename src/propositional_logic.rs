@@ -3,7 +3,7 @@ use std::{fmt, str::FromStr, marker::PhantomData};
 use crate::formula::*;
 use crate::opperators::*;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct PropositionalLanguage<A: Atom> {
     _phantom_data: PhantomData<A>
 }
@@ -104,7 +104,8 @@ pub mod boolean_interpretation {
             make_rule("({F} || ({G} && {H}))", "(({F} || {G}) && ({F} || {H}))"),
             make_rule("(({F} && {G}) || {H})", "(({F} || {H}) && ({G} || {H}))"),
             make_rule("({F} || {F})", "{F}"),
-            make_rule("(ALL({*args}) && {A})", "ALL({*args}, {A})"),
+            make_rule("(ALL({*args*}) && {A})", "ALL({*args*}, {A})"),
+            make_rule("(ALL({*args*}) || {A})", "ALL({*args:ARG:({ARG} || {A})*})"),
         ];
         loop {
             let changes = rules.iter()

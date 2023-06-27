@@ -26,11 +26,11 @@ impl FromStr for Variable {
 
 impl Atom for Variable {}
 
-pub trait Language: std::cmp::PartialEq + std::clone::Clone + std::fmt::Debug {
+pub trait Language: std::cmp::PartialEq + Eq + std::hash::Hash + std::clone::Clone + std::fmt::Debug {
     type Atom: Atom;
-    type UnaryOpp: fmt::Display + FromStr + Eq + PartialEq + Clone;
-    type BinaryOpp: fmt::Display + FromStr + Eq + PartialEq + Clone;
-    type Function: fmt::Debug + fmt::Display + FromStr + Eq + PartialEq + Clone;
+    type UnaryOpp: fmt::Debug +fmt::Display + FromStr + Eq + PartialEq + std::hash::Hash + Clone;
+    type BinaryOpp: fmt::Debug + fmt::Display + FromStr + Eq + PartialEq + std::hash::Hash + Clone;
+    type Function: fmt::Debug + fmt::Display + FromStr + Eq + PartialEq + std::hash::Hash + Clone;
 }
 
 pub fn is_symbol<L: Language>(s: &str) -> bool {
@@ -43,7 +43,7 @@ pub fn is_symbol<L: Language>(s: &str) -> bool {
     s.parse::<L::Function>().is_ok()
 }
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Hash, Debug)]
 pub enum Formula<L: Language> {
     Atom(L::Atom),
     UnaryOpp(L::UnaryOpp, Box<Formula<L>>),
