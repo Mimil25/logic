@@ -107,9 +107,16 @@ pub mod boolean_interpretation {
             make_rule("({A} && ALL({*args*}))", "ALL({*args*}, {A})"),
             make_rule("({A} || ANY({*args*}))", "ANY({*args*}, {A})"),
             
-            make_rule("(ALL({*args*}, {A}, {A}))", "ALL({*args*}, {A})"),
+            make_rule("ALL({*args*}, {A}, {A})", "ALL({*args*}, {A})"),
+            make_rule("ANY({*args*}, {A}, {A})", "ANY({*args*}, {A})"),
             
             make_rule("(ALL({*args*}) || {A})", "ALL({*args:ARG:({ARG} || {A})*})"),
+            make_rule("({A} || ALL({*args*}))", "ALL({*args:ARG:({ARG} || {A})*})"),
+
+            make_rule("ALL({*args*}, FALSE)", "FALSE"),
+            make_rule("ANY({*args*}, TRUE)", "TRUE"),
+            make_rule("ALL({*args*}, {A}, !{A})", "FALSE"),
+            make_rule("ANY({*args*}, {A}, !{A})", "TRUE"),
         ];
         loop {
             let changes = rules.iter()

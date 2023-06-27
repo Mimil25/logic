@@ -144,7 +144,7 @@ pub fn make_rule<L: Language>(pat: &str, replacement: &str) -> ReplacementRule<L
 
 fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, matches: &mut Vec<Option<Cow<'a, Formula<L>>>>) -> bool {
     match (pat, f) {
-        (Formula::Atom(PatternAtom::AnyArgs { name:_, arg:_, id, pattern:_ }), f) |
+        (Formula::Atom(PatternAtom::AnyArgs { name:_, arg:_, id:_, pattern:_ }), _) => panic!("unexpected AnyArgs"),
         (Formula::Atom(PatternAtom::Any { name:_, id }), f) => {
             match &matches[*id] {
                 Some(f2) => {
@@ -156,6 +156,7 @@ fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, mat
             }
             true
         },
+        (Formula::Atom(PatternAtom::Atom(ap)), Formula::Atom(af)) => return *ap == *af,
         (Formula::UnaryOpp(op, p), Formula::UnaryOpp(of, f)) => {
             if op != of {
                 return false;
@@ -176,40 +177,66 @@ fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, mat
                 return true;
             }
             if !p_args.is_empty() {
-                if let Formula::Atom(PatternAtom::AnyArgs { name:_, arg:_, id, pattern:_ }) = p_args[0] {
-                    println!("args pattern matched");
-                    match matches[id] {
+                if let Formula::Atom(PatternAtom::AnyArgs { name:_, arg:_, id, pattern }) = &p_args[0] {
+                    match matches[*id] {
                         Some(_) => panic!("not implemented yet"),
                         None => {
-                            let mut used_args: Vec<usize> = Vec::new();
-                            for p_arg in p_args[1..].iter() {
-                                let mut match_found = false;
-                                for (i, f_arg) in f_args.iter().enumerate() {
-                                    if !used_args.contains(&i) {
-                                        let mut tmp_matches = matches.clone();
-                                        if match_rule(p_arg, f_arg, &mut tmp_matches) {
-                                            used_args.push(i);
-                                            match_found = true;
-                                            *matches = tmp_matches;
-                                            break;
+                            // create a new match function if each arg in
+                            // p_args[1..] can match one in f_args and all
+                            // unmached args in f_args matche pattern else return false
+                            // the created match function's args should contains
+                            // args from f_args that have not been matched by one from p_args
+                            
+                            let mut used_args: Vec<bool> = vec![false; f_args.len()];
+                            
+                            let mut start = 0;
+
+                            loop {
+                                let mut tmp_matches = matches.clone();
+                                let mut is_ok = true;
+                                for p_arg in p_args[1..].iter() {
+                                    let mut match_found = false;
+                                    for i in start..f_args.len() {
+                                        if !used_args[i] {
+                                            let mut tmp_matches_2 = tmp_matches.clone();
+                                            if match_rule(p_arg, &f_args[i], &mut tmp_matches_2) {
+                                                used_args[i] = true;
+                                                match_found = true;
+                                                tmp_matches = tmp_matches_2;
+                                                break;
+                                            }
                                         }
                                     }
+                                    if !match_found {
+                                        is_ok = false;
+                                        used_args.fill(false);
+                                        break;
+                                    }
                                 }
-                                if !match_found {
-                                    println!("args pattern {} didn't match", p_arg);
+                                if is_ok {
+                                    *matches = tmp_matches;
+                                    break;
+                                }
+                                start += 1;
+                                if start + p_args.len() - 1 > f_args.len() {
                                     return false;
                                 }
                             }
-                            matches[id] = Some(Cow::Owned(Formula::Function(
+                            for (i, arg) in f_args.iter().enumerate() {
+                                let mut phantom_matches = vec![None; matches.len() + 1];
+                                if !used_args[i] && !match_rule(&pattern, arg, &mut phantom_matches) {
+                                    return false;
+                                }
+                            }
+                            matches[*id] = Some(Cow::Owned(Formula::Function(
                                     ff.clone(),
                                     f_args.iter()
                                         .enumerate()
-                                        .filter(|(i,_)| !used_args.contains(i))
+                                        .filter(|(i,_)| !used_args[*i])
                                         .map(|(_, a)| a)
                                         .cloned()
                                         .collect(),
                                     )));
-                            println!("match : {}", *matches[id].as_ref().unwrap());
                             return true;
                         }
                     }
