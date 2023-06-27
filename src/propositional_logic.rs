@@ -99,12 +99,16 @@ pub mod boolean_interpretation {
             make_rule("({F} <=> {G})", "(({F} => {G}) && ({G} => {F}))"),
             make_rule("({F} => {G})", "(!{F} || {G})"),
             make_rule("!!{F}", "{F}"),
-            make_rule("!({F} && {G})", "(!{F} || !{G})"),
-            make_rule("!({F} || {G})", "(!{F} && !{G})"),
-            make_rule("({F} || ({G} && {H}))", "(({F} || {G}) && ({F} || {H}))"),
-            make_rule("(({F} && {G}) || {H})", "(({F} || {H}) && ({G} || {H}))"),
-            make_rule("({F} || {F})", "{F}"),
+            
+            make_rule("({A} && {B})", "ALL({A}, {B})"),
+            make_rule("({A} || {B})", "ANY({A}, {B})"),
             make_rule("(ALL({*args*}) && {A})", "ALL({*args*}, {A})"),
+            make_rule("(ANY({*args*}) || {A})", "ANY({*args*}, {A})"),
+            make_rule("({A} && ALL({*args*}))", "ALL({*args*}, {A})"),
+            make_rule("({A} || ANY({*args*}))", "ANY({*args*}, {A})"),
+            
+            make_rule("(ALL({*args*}, {A}, {A}))", "ALL({*args*}, {A})"),
+            
             make_rule("(ALL({*args*}) || {A})", "ALL({*args:ARG:({ARG} || {A})*})"),
         ];
         loop {

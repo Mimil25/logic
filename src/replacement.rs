@@ -48,8 +48,8 @@ impl<L: Language> std::str::FromStr for PatternAtom<L> {
                 });
             } else if s.starts_with("{") &&
                 s.ends_with("}") &&
-                !s[2..].contains("{") &&
-                !s[..s.len()-2].contains("}")
+                !s[1..].contains("{") &&
+                !s[..s.len()-1].contains("}")
                 {
                 return Ok(PatternAtom::Any{name:s[1..s.len()-1].to_string(), id:0});
             }
@@ -173,6 +173,7 @@ fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, mat
                 return false;
             }
             if p_args.is_empty() && f_args.is_empty() {
+                return true;
             }
             if !p_args.is_empty() {
                 if let Formula::Atom(PatternAtom::AnyArgs { name:_, arg:_, id, pattern:_ }) = p_args[0] {
@@ -195,7 +196,7 @@ fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, mat
                                     }
                                 }
                                 if !match_found {
-                                    println!("args pattern didn't match");
+                                    println!("args pattern {} didn't match", p_arg);
                                     return false;
                                 }
                             }
