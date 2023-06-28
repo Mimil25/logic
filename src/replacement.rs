@@ -189,14 +189,14 @@ fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, mat
                             
                             let mut used_args: Vec<bool> = vec![false; f_args.len()];
                             
-                            let mut start = 0;
+                            let mut start = vec![0; p_args.len()];
 
                             loop {
                                 let mut tmp_matches = matches.clone();
                                 let mut is_ok = true;
-                                for p_arg in p_args[1..].iter() {
+                                for (i_arg, p_arg) in p_args[1..].iter().enumerate() {
                                     let mut match_found = false;
-                                    for i in start..f_args.len() {
+                                    for i in start[i_arg]..f_args.len() {
                                         if !used_args[i] {
                                             let mut tmp_matches_2 = tmp_matches.clone();
                                             if match_rule(p_arg, &f_args[i], &mut tmp_matches_2) {
@@ -217,8 +217,19 @@ fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, mat
                                     *matches = tmp_matches;
                                     break;
                                 }
-                                start += 1;
-                                if start + p_args.len() - 1 > f_args.len() {
+                                
+                                //increment start
+                                let mut end = true;
+                                for d in start.iter_mut() {
+                                    *d += 1;
+                                    if *d >= p_args.len() {
+                                        *d = 0;
+                                    } else {
+                                        end = false;
+                                        break;
+                                    }
+                                }
+                                if end {
                                     return false;
                                 }
                             }
