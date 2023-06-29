@@ -222,7 +222,7 @@ fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, mat
                                 let mut end = true;
                                 for d in start.iter_mut() {
                                     *d += 1;
-                                    if *d >= p_args.len() {
+                                    if *d >= f_args.len() {
                                         *d = 0;
                                     } else {
                                         end = false;
