@@ -58,7 +58,12 @@ pub mod boolean_interpretation {
 
     pub fn truth_table_repr<A: Atom, W: io::Write>(f: &Formula<PropositionalLanguage<A>>, writer: &mut W) -> io::Result<()> {
         let mut iter = HashMapValuationIter::<A>::from(f.iter().cloned());
-        let mut atoms = Vec::with_capacity(iter.values.data.len());
+        let len = iter.values.data.len();
+        if len > 10 {
+            writer.write_all("Truth table too long :(\n".as_bytes())?;
+            return Ok(());
+        }
+        let mut atoms = Vec::with_capacity(len);
         for a in f.iter() {
             if !atoms.contains(&a) {
                 writer.write_all(format!("{}\t", a).as_bytes())?;
@@ -103,6 +108,17 @@ pub mod boolean_interpretation {
             // simplification of double negation
             make_rule("!!{F}", "{F}"),
             
+            make_rule("ALL({*args*}, {A}, !{A})", "FALSE"),
+            make_rule("ANY({*args*}, {A}, !{A})", "TRUE"),
+            
+            make_rule("ALL({*args*}, FALSE)", "FALSE"),
+            make_rule("ANY({*args*}, TRUE)", "TRUE"),
+            make_rule("ALL({*args*}, TRUE)", "ALL({*args*})"),
+            make_rule("ANY({*args*}, FALSE)", "ANY({*args*})"),
+            
+            make_rule("!FALSE", "TRUE"),
+            make_rule("!TRUE", "FALSE"),
+            
             // propagation of comutativity
             make_rule("({A} && {B})", "ALL({A}, {B})"),
             make_rule("({A} || {B})", "ANY({A}, {B})"),
@@ -125,19 +141,10 @@ pub mod boolean_interpretation {
             make_rule(
                 "ANY({*disjunction*}, {A}, ALL({*conjuction*}))",
                 "ANY({*disjunction*}, ALL({*conjuction:ARG:ANY({A}, {ARG})*}))"),
-            
-            make_rule("ALL({*args*}, {A}, !{A})", "FALSE"),
-            make_rule("ANY({*args*}, {A}, !{A})", "TRUE"),
-            
-            make_rule("ALL({*args*}, FALSE)", "FALSE"),
-            make_rule("ANY({*args*}, TRUE)", "TRUE"),
-            make_rule("ALL({*args*}, TRUE)", "ALL({*args*})"),
-            make_rule("ANY({*args*}, FALSE)", "ANY({*args*})"),
-            
-            make_rule("!FALSE", "TRUE"),
-            make_rule("!TRUE", "FALSE"),
         ];
-        while rules.iter().any(|rule| replace(rule, f)) {}
+        while rules.iter().any(|rule| replace(rule, f)) {
+            println!("{}", f);
+        }
     }
 
     
@@ -166,13 +173,13 @@ pub mod boolean_interpretation {
                     "ANY({*b*})"),
             ];
 
+            let mut b_max = 1;
             loop {
                 let mut a = 0;
-                let mut b_max = a + 1;
                 let mut new = false;
-                while a < clauses.len() -1 {
+                let next_b_max = clauses.len();
+                while a + 1 < clauses.len() {
                     let mut b = b_max;
-                    b_max = clauses.len();
                     while b < clauses.len() {
                         let mut tmp = Formula::Function(
                             PLFuncs::Conjuction(crate::opperators::Conjuction),
@@ -190,6 +197,7 @@ pub mod boolean_interpretation {
                     }
                     a += 1;
                 }
+                b_max = next_b_max;
                 if !new {
                     break;
                 }

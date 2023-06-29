@@ -163,12 +163,12 @@ impl<L: Language> Formula<L> {
 
 fn parse_from_symboles<'a, L: Language>(symbols: &'a [&'a str]) -> Result<(Formula<L>, usize), String> {
     if symbols.is_empty() {
-        return Err(String::from("unexpected end of source"));
+        return Err(String::from("unexpected end of source 0"));
     }
     if symbols[0] == "(" {
         let (lhs, lhs_len) = parse_from_symboles::<L>(&symbols[1..])?;
         if symbols.len() <= lhs_len + 1 {
-            return Err(String::from("unexpected end of source"));
+            return Err(String::from("unexpected end of source 1"));
         }
         if symbols[lhs_len + 1] == ")" {
             return Ok((lhs, lhs_len + 2));
@@ -178,7 +178,7 @@ fn parse_from_symboles<'a, L: Language>(symbols: &'a [&'a str]) -> Result<(Formu
         })?;
         let (rhs, rhs_len) = parse_from_symboles::<L>(&symbols[(lhs_len + 2)..])?;
         if symbols.len() < lhs_len + rhs_len + 3 {
-            return Err(String::from("unexpected end of source"));
+            return Err(String::from("unexpected end of source 2"));
         }
         if symbols[lhs_len + rhs_len + 2] != ")" {
             return Err(format!("unexpected {}, ')' expected", symbols[lhs_len + rhs_len + 2]));
@@ -186,7 +186,7 @@ fn parse_from_symboles<'a, L: Language>(symbols: &'a [&'a str]) -> Result<(Formu
         Ok((Formula::BinaryOpp(Box::new(lhs), opp, Box::new(rhs)), lhs_len + rhs_len + 3))
     } else if let Ok(opp) = symbols[0].parse::<L::UnaryOpp>() {
         if symbols.len() < 2 {
-            return Err(String::from("unexpected end of source"));
+            return Err(String::from("unexpected end of source 3"));
         }
         let (rhs, i) = parse_from_symboles(&symbols[1..])?;
         Ok((Formula::UnaryOpp(opp, Box::new(rhs)), i + 1))
