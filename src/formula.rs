@@ -16,7 +16,7 @@ impl fmt::Display for Variable {
 impl FromStr for Variable {
     type Err = ();
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.chars().all(char::is_uppercase) {
+        if s.chars().all(|c| c.is_digit(10+26)) {
             Ok(Variable { name: s.to_string() })
         } else {
             Err(())

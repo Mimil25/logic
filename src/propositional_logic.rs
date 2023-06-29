@@ -24,6 +24,7 @@ pub mod boolean_interpretation {
     use std::ops::{Not, BitAnd, BitOr};
 
     use crate::formula::{Formula, Atom};
+    use crate::opperators::And;
 
     use super::super::interpretation::*;
     use super::PropositionalLanguage;
@@ -91,7 +92,7 @@ pub mod boolean_interpretation {
         truth_table_repr(f, &mut writer)
     }
 
-    pub fn resolve<A: Atom>(f: &mut Formula<PropositionalLanguage<A>>) {
+    pub fn to_cnf<A: Atom>(f: &mut Formula<PropositionalLanguage<A>>) {
         use super::super::replacement::*;
         let rules: Vec<ReplacementRule<PropositionalLanguage<A>>> = vec![ // TODO find a way to make
                                                                      // this static
@@ -121,23 +122,102 @@ pub mod boolean_interpretation {
             make_rule("!ANY({*args*})", "AND({*args:ARG:!{ARG}*})"),
 
             // distribution of disjuctions
-            make_rule("ANY({*disjunction*}, {A}, ALL({*conjuction*}))","ANY({*disjunction*}, ALL({*conjuction:ARG:ANY({A}, {ARG})*}))"),
-
-            // the folowing rules can eleminate atoms and introduce TRUE and FALSE
-            // using them may resolve a satement and is not rewriting
-            make_rule("ALL({*args*}, FALSE)", "FALSE"),
-            make_rule("ANY({*args*}, TRUE)", "TRUE"),
+            make_rule(
+                "ANY({*disjunction*}, {A}, ALL({*conjuction*}))",
+                "ANY({*disjunction*}, ALL({*conjuction:ARG:ANY({A}, {ARG})*}))"),
+            
             make_rule("ALL({*args*}, {A}, !{A})", "FALSE"),
             make_rule("ANY({*args*}, {A}, !{A})", "TRUE"),
+            
+            make_rule("ALL({*args*}, FALSE)", "FALSE"),
+            make_rule("ANY({*args*}, TRUE)", "TRUE"),
+            make_rule("ALL({*args*}, TRUE)", "ALL({*args*})"),
+            make_rule("ANY({*args*}, FALSE)", "ANY({*args*})"),
+            
+            make_rule("!FALSE", "TRUE"),
+            make_rule("!TRUE", "FALSE"),
         ];
-        loop {
-            let changes = rules.iter()
-                .map(|rule| replace(rule, f))
-                .reduce(|a, b| a|b)
-                .unwrap_or(false);
-            if !changes {
-                break;
+        while rules.iter().any(|rule| replace(rule, f)) {}
+    }
+
+    
+
+    //transform 
+    pub fn resolve<A: Atom>(f: &mut Formula<PropositionalLanguage<A>>) {
+        use super::PLFuncs;
+        use super::super::replacement::*;
+        
+        to_cnf(f);
+
+        println!("cnf : {}", f);
+        
+
+        if let Formula::Function(PLFuncs::Conjuction(_), clauses) = f {
+            // saturation
+            let devlopement_rules: Vec<ReplacementRule<PropositionalLanguage<A>>> = vec![
+                make_rule(
+                    "ALL(ANY({*b*}, !{A}), ANY({*c*}, {A}))",
+                    "ANY({*b*}, {*c*})"),
+                make_rule(
+                    "ALL({A}, ANY({*b*}, !{A}))",
+                    "ANY({*b*})"),
+                make_rule(
+                    "ALL(!{A}, ANY({*b*}, {A}))",
+                    "ANY({*b*})"),
+            ];
+
+            loop {
+                let mut a = 0;
+                let mut b_max = a + 1;
+                let mut new = false;
+                while a < clauses.len() -1 {
+                    let mut b = b_max;
+                    b_max = clauses.len();
+                    while b < clauses.len() {
+                        let mut tmp = Formula::Function(
+                            PLFuncs::Conjuction(crate::opperators::Conjuction),
+                            vec![
+                                clauses[a].clone(),
+                                clauses[b].clone()
+                            ]);
+                        let n = devlopement_rules.iter().any(|rule| replace(rule, &mut tmp));
+                        println!("{} {} + {} -> {}", n, clauses[a], clauses[b], tmp);
+                        if n && !clauses.contains(&tmp) {
+                            clauses.push(tmp);
+                            new = true;
+                        }
+                        b += 1;
+                    }
+                    a += 1;
+                }
+                if !new {
+                    break;
+                }
             }
         }
+        // simplification
+        let simplification_rules: Vec<ReplacementRule<PropositionalLanguage<A>>> = vec![
+            make_rule("ANY({*args*}, {A}, {A})", "ANY({*args*}, {A})"),
+            make_rule("ALL({*args*}, {A}, {A})", "ALL({*args*}, {A})"),
+            
+            make_rule("ANY({A})", "{A}"),
+            make_rule("ALL({A})", "{A}"),
+
+            make_rule("ALL({*args*}, {A}, !{A})", "FALSE"),
+            make_rule("ANY({*args*}, {A}, !{A})", "TRUE"),
+            
+            make_rule("ALL({*args*}, FALSE)", "FALSE"),
+            make_rule("ANY({*args*}, TRUE)", "TRUE"),
+            make_rule("ALL({*args*}, TRUE)", "ALL({*args*})"),
+            make_rule("ANY({*args*}, FALSE)", "ANY({*args*})"),
+            
+            make_rule("!FALSE", "TRUE"),
+            make_rule("!TRUE", "FALSE"),
+            
+            make_rule("ALL({*a*}, {A}, ANY({*b*}, {A}))", "ALL({*a*}, {A})"),
+            make_rule("ALL({*a*}, {A}, ANY({*b*}, !{A}))", "ALL({*a*}, {A}, ANY({*b*}))"),
+            make_rule("ALL({*a*}, !{A}, ANY({*b*}, {A}))", "ALL({*a*}, !{A}, ANY({*b*}))"),
+        ];
+        while simplification_rules.iter().any(|rule| replace(rule, f)){}
     }
 }

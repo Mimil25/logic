@@ -9,6 +9,7 @@ mod replacement;
 mod sudoku;
 
 use std::io::Write;
+use std::borrow::Cow;
 
 use formula::*;
 use propositional_logic::PropositionalLanguage;
