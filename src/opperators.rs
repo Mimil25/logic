@@ -1,5 +1,5 @@
 use std::fmt;
-use std::str::FromStr;
+use crate::formula::Opp;
 
 macro_rules! opp {
     ($name:ident, $symbol:literal) => {
@@ -11,17 +11,37 @@ macro_rules! opp {
                 f.write_str($symbol)
             }
         }
-
-        impl FromStr for $name {
-            type Err = ();
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                if s == $symbol {
-                    Ok($name)
-                } else {
-                    Err(())
+        
+        impl TryFrom<(&[&str], &mut usize)> for $name {
+            type Error = String;
+            fn try_from(value: (&[&str], &mut usize)) -> Result<Self, Self::Error> {
+                let mut v_i = value.0.iter();
+                let mut v_ii = v_i.next().unwrap().chars();
+                let mut len = 1;
+                for i in 0..$symbol.len() {
+                    let r = v_ii.next();
+                    let c;
+                    if r.is_none() {
+                        let rr = v_i.next();
+                        len += 1;
+                        if rr.is_none() {
+                            return Err(format!("unexpected end while parsing {}", $symbol));
+                        }
+                        v_ii = rr.unwrap().chars();
+                        c = v_ii.next().unwrap();
+                    } else {
+                        c = r.unwrap();
+                    }
+                    if $symbol[i..i+1].chars().next().unwrap() != c {
+                        return Err(String::new());
+                    }
                 }
+                *value.1 = len;
+                Ok(Self)
             }
-        }        
+        }
+
+        impl Opp for $name {}
     };
 }
 
@@ -44,17 +64,19 @@ macro_rules! group_opps {
             }
         }
         
-        impl FromStr for $name {
-            type Err = ();
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
+        impl TryFrom<(&[&str], &mut usize)> for $name {
+            type Error = String;
+            fn try_from(value: (&[&str], &mut usize)) -> Result<Self, Self::Error> {
                 $(
-                    if let Ok(o) = s.parse::<$opp>() {
+                    if let Ok(o) = $opp::try_from((value.0, &mut*value.1)) {
                         Ok(Self::$opp(o))
                 } else )+ {
-                    Err(())
+                    Err(String::new())
                 }
             }
-        }        
+        } 
+        
+        impl Opp for $name {}
     };
 }
 

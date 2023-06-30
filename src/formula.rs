@@ -5,7 +5,25 @@ pub struct Variable {
     name: String,
 }
 
-pub trait Atom: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + FromStr + std::hash::Hash{}
+pub trait Atom:
+    fmt::Debug +
+    fmt::Display +
+    Clone +
+    PartialEq +
+    Eq +
+    for<'a> TryFrom<(&'a [&'a str], &'a mut usize), Error = String> +
+    std::hash::Hash
+{}
+
+pub trait Opp:
+    fmt::Debug +
+    fmt::Display +
+    Eq +
+    PartialEq +
+    std::hash::Hash +
+    for<'a> TryFrom<(&'a [&'a str], &'a mut usize), Error = String> +
+    Clone
+{}
 
 impl fmt::Display for Variable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -13,13 +31,18 @@ impl fmt::Display for Variable {
     }
 }
 
-impl FromStr for Variable {
-    type Err = ();
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.chars().all(|c| c.is_digit(10+26)) {
-            Ok(Variable { name: s.to_string() })
+impl TryFrom<(&[&str], &mut usize)> for Variable {
+    type Error = String;
+    fn try_from(value: (&[&str], &mut usize)) -> Result<Self, Self::Error> {
+        if value.0.len() >= 1 {
+            if value.0[0].chars().all(|c| c.is_digit(36)) {
+                *value.1 = 1;
+                Ok(Variable { name: value.0[0].to_string()})
+            } else {
+                Err(format!("identifier {} should be alphanumeric", value.0[0]))
+            }
         } else {
-            Err(())
+            Err(String::from("unexpected end when parsing Variable"))
         }
     }
 }
@@ -28,19 +51,9 @@ impl Atom for Variable {}
 
 pub trait Language: std::cmp::PartialEq + Eq + std::hash::Hash + std::clone::Clone + std::fmt::Debug {
     type Atom: Atom;
-    type UnaryOpp: fmt::Debug +fmt::Display + FromStr + Eq + PartialEq + std::hash::Hash + Clone;
-    type BinaryOpp: fmt::Debug + fmt::Display + FromStr + Eq + PartialEq + std::hash::Hash + Clone;
-    type Function: fmt::Debug + fmt::Display + FromStr + Eq + PartialEq + std::hash::Hash + Clone;
-}
-
-pub fn is_symbol<L: Language>(s: &str) -> bool {
-    s == "(" ||
-    s == ")" ||
-    s == "," ||
-    s.parse::<L::Atom>().is_ok() ||
-    s.parse::<L::UnaryOpp>().is_ok() ||
-    s.parse::<L::BinaryOpp>().is_ok() ||
-    s.parse::<L::Function>().is_ok()
+    type UnaryOpp: Opp;
+    type BinaryOpp: Opp;
+    type Function: Opp;
 }
 
 #[derive(PartialEq, Eq, Clone, Hash, Debug)]
@@ -161,56 +174,75 @@ impl<L: Language> Formula<L> {
     }
 }
 
-fn parse_from_symboles<'a, L: Language>(symbols: &'a [&'a str]) -> Result<(Formula<L>, usize), String> {
-    if symbols.is_empty() {
-        return Err(String::from("unexpected end of source 0"));
-    }
-    if symbols[0] == "(" {
-        let (lhs, lhs_len) = parse_from_symboles::<L>(&symbols[1..])?;
-        if symbols.len() <= lhs_len + 1 {
-            return Err(String::from("unexpected end of source 1"));
+impl<L: Language> TryFrom<(&[&str], &mut usize)> for Formula<L> {
+    type Error = String;
+    fn try_from(value: (&[&str], &mut usize)) -> Result<Self, Self::Error> {
+        match value.0 {
+            ["(", rest@..] => {
+                let mut len_f = 0;
+                let first = Formula::try_from((rest, &mut len_f))?;
+                if rest.len() <= len_f {
+                    return Err(String::from("unexpected end of symbols"));
+                }
+                if rest[len_f] == ")" {
+                    *value.1 = 2 + len_f;
+                    return Ok(first);
+                }
+                let mut len_o = 0;
+                let opp = L::BinaryOpp::try_from((&rest[len_f..], &mut len_o))?;
+                let mut len_s = 0;
+                let second = Formula::try_from((&rest[(len_f+len_o)..], &mut len_s))?;
+                let len = len_f + len_o + len_s;
+                if rest.len() <= len {
+                    return Err(String::from("unexpected end of symbols"));
+                }
+                if rest[len] != ")" {
+                    return Err(format!("unexpected {}, ')' expected", rest[len]));
+                }
+                *value.1 = len + 2;
+                Ok(Formula::BinaryOpp(Box::new(first), opp, Box::new(second)))
+            },
+            [rest@..] => {
+                let mut len = 0;
+                if let Ok(func) = L::Function::try_from((rest, &mut len)) { // maybe its a function
+                    if len >= rest.len() {
+                        return Err(String::from("unexpected end of symbols"));
+                    }
+                    if rest[len] == "(" { // its a function
+                        let mut args = Vec::new();
+                        len += 1;
+                        if rest[len] == ")" {
+                            return Ok(Formula::Function(func, args));
+                        }
+                        loop {
+                            let mut len_arg = 0;
+                            args.push(Formula::try_from((&rest[len..], &mut len_arg))?);
+                            len += len_arg;
+                            if rest[len] == ")" {
+                                *value.1 = len + 1;
+                                return Ok(Formula::Function(func, args));
+                            } else if rest[len] != "," {
+                                return Err(format!("unexpected {}, ',' or ')' expected", rest[len]));
+                            }
+                            len += 1;
+                        }
+                    } else { 
+                        return Err(format!("unexpected {}, ',' or ')' expected", rest[len]));
+                    }
+                } else if let Ok(opp) = L::UnaryOpp::try_from((rest, &mut len)) { // maybe its an UnaryOpp
+                    if len >= rest.len() {
+                        return Err(String::from("unexpected end of symbols"));
+                    }
+                    let mut len_arg = 0;
+                    let arg = Formula::try_from((&rest[len..], &mut len_arg))?;
+                    *value.1 = len + len_arg;
+                    return Ok(Formula::UnaryOpp(opp, Box::new(arg)));
+                } else { // it can only be an atom
+                    let atom = L::Atom::try_from(value)?;
+                    Ok(Formula::Atom(atom))
+                }
+            },
         }
-        if symbols[lhs_len + 1] == ")" {
-            return Ok((lhs, lhs_len + 2));
-        }
-        let opp = symbols[lhs_len + 1].parse::<L::BinaryOpp>().map_err(|_| {
-            format!("unexpected {}, BinaryOpp expected", symbols[lhs_len])
-        })?;
-        let (rhs, rhs_len) = parse_from_symboles::<L>(&symbols[(lhs_len + 2)..])?;
-        if symbols.len() < lhs_len + rhs_len + 3 {
-            return Err(String::from("unexpected end of source 2"));
-        }
-        if symbols[lhs_len + rhs_len + 2] != ")" {
-            return Err(format!("unexpected {}, ')' expected", symbols[lhs_len + rhs_len + 2]));
-        }
-        Ok((Formula::BinaryOpp(Box::new(lhs), opp, Box::new(rhs)), lhs_len + rhs_len + 3))
-    } else if let Ok(opp) = symbols[0].parse::<L::UnaryOpp>() {
-        if symbols.len() < 2 {
-            return Err(String::from("unexpected end of source 3"));
-        }
-        let (rhs, i) = parse_from_symboles(&symbols[1..])?;
-        Ok((Formula::UnaryOpp(opp, Box::new(rhs)), i + 1))
-    } else if let Ok(f) = symbols[0].parse::<L::Function>() {
-        if symbols[1] != "(" {
-            return Err(format!("unexpected {}, '(' expected after Function symbols", symbols[1]));
-        }
-        let mut i = 2;
-        let mut args = Vec::new();
-        while symbols[i] != ")" {
-            let (arg, arg_len) = parse_from_symboles::<L>(&symbols[i..])?;
-            args.push(arg);
-            i += arg_len;
-            if symbols[i] == "," {
-                i += 1;
-            } else if symbols[i] != ")" {
-                return Err(format!("unexpected {}, ',' or ')' expected after argument", symbols[1]));
-            }
-        }
-        Ok((Formula::Function(f, args), i + 1))
-    } else if let Ok(a) = symbols[0].parse::<L::Atom>() {
-        Ok((Formula::Atom(a), 1))
-    } else {
-        Err(format!("illegal expression {}", symbols[0]))
     }
 }
 
@@ -219,20 +251,25 @@ impl<L: Language> FromStr for Formula<L> {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut symbols = Vec::new();
         let mut i = 0;
+        
         while i < s.len() {
-            let mut j = s.len();
-            while j > i && !is_symbol::<L>(&s[i..j]) {
-                j -= 1;
+            let c = s.as_bytes()[i] as char;
+            if !c.is_digit(36) && !c.is_whitespace() {
+                symbols.push(&s[i..=i]);
             }
-            if j == i {
-                i += 1;
-            } else {
+            let mut j = i;
+            while j < s.len() && (s.as_bytes()[j] as char).is_digit(36) {
+                j += 1;
+            }
+            if j != i {
                 symbols.push(&s[i..j]);
                 i = j;
+            } else {
+                i += 1;
             }
         }
-
-        parse_from_symboles(&symbols[..]).map(|(f, _)| {f})
+        let mut _len = 0;
+        Self::try_from((&symbols[..], &mut _len))
     }
 }
 

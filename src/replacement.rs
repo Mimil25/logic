@@ -27,34 +27,56 @@ impl<L: Language> std::fmt::Display for PatternAtom<L> {
     }
 }
 
-impl<L: Language> std::str::FromStr for PatternAtom<L> {
-    type Err = <L::Atom as std::str::FromStr>::Err;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.len() > 2 {
-            if s.starts_with("{*") &&
-                s.ends_with("*}") &&
-                !s[2..].contains("{*") &&
-                !s[..s.len()-2].contains("*}")
-                {
-                let mut split = s[2..s.len()-2].split(':');
-                let name = split.next().unwrap();
-                let arg = split.next().unwrap_or("ARG");
-                let pattern = split.next().unwrap_or("{ARG}");
-                return Ok(PatternAtom::AnyArgs {
-                    name: name.to_string(),
-                    arg: arg.to_string(),
-                    pattern: Box::new(pattern.parse().unwrap()),
-                    id: 0
-                });
-            } else if s.starts_with('{') &&
-                s.ends_with('}') &&
-                !s[1..].contains('{') &&
-                !s[..s.len()-1].contains('}')
-                {
-                return Ok(PatternAtom::Any{name:s[1..s.len()-1].to_string(), id:0});
-            }
+impl<L: Language> TryFrom<(&[&str], &mut usize)> for PatternAtom<L> {
+    type Error = String;
+    fn try_from(value: (&[&str], &mut usize)) -> Result<Self, Self::Error> {
+        match value.0 {
+            [] => Err(String::from("unexpected end while parsing PatternAtom")),
+            ["{", name, "}", ..] => {
+                if name.chars().all(|c| c.is_digit(36)) {
+                    *value.1 = 3;
+                    Ok(PatternAtom::Any { name: name.to_string(), id: 0 })
+                } else {
+                    Err(format!("identifier {} should be alphanumeric 0", name))
+                }
+            },
+            ["{","*",name, "*","}", ..] => {
+                if name.chars().all(|c| c.is_digit(36)) {
+                    *value.1 = 5;
+                    Ok(PatternAtom::AnyArgs {
+                        name: name.to_string(),
+                        arg: String::from("arg"),
+                        id: 0,
+                        pattern: Box::new(Formula::Atom(PatternAtom::Any { name: String::from("arg"), id: 0 })),
+                    })
+                } else {
+                    Err(format!("identifier {} should be alphanumeric 1", name))
+                }
+            },
+            ["{","*",name,":", arg, ":", pattern_s@..] => {
+                if name.chars().all(|c| c.is_digit(36)) {
+                    let mut len_pattern = 0;
+                    let pattern = Formula::try_from((pattern_s, &mut len_pattern))?;
+                    if len_pattern + 1 >= pattern_s.len() || 
+                        pattern_s[len_pattern] != "*" ||
+                            pattern_s[len_pattern + 1] != "}" {
+                        return Err(format!(
+                                "unexpected '{}{}', '*}}' expected to close AnyArgs pattern",
+                                pattern_s[len_pattern], pattern_s[len_pattern + 1]));
+                    }
+                    *value.1 = 8 + len_pattern;
+                    Ok(PatternAtom::AnyArgs {
+                        name: name.to_string(),
+                        arg: arg.to_string(),
+                        id: 0,
+                        pattern: Box::new(pattern),
+                    })
+                } else {
+                    Err(format!("identifier {} should be alphanumeric 2", name))
+                }
+            },
+            [..] => L::Atom::try_from(value).map(|atom| PatternAtom::Atom(atom)),
         }
-        L::Atom::from_str(s).map(|a| PatternAtom::Atom(a))
     }
 }
 
