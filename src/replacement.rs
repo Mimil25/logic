@@ -215,16 +215,25 @@ fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, mat
 
                             loop {
                                 let mut tmp_matches = matches.clone();
+                                let mut tmp_matches_2 = tmp_matches.clone();
                                 let mut is_ok = true;
                                 for (i_arg, p_arg) in p_args[1..].iter().enumerate() {
                                     let mut match_found = false;
                                     for i in start[i_arg]..f_args.len() {
                                         if !used_args[i] {
-                                            let mut tmp_matches_2 = tmp_matches.clone();
+                                            for i in 0..tmp_matches.len() {
+                                                if tmp_matches[i].is_none() {
+                                                    tmp_matches_2[i] = None;
+                                                }
+                                            }
                                             if match_rule(p_arg, &f_args[i], &mut tmp_matches_2) {
                                                 used_args[i] = true;
                                                 match_found = true;
-                                                tmp_matches = tmp_matches_2;
+                                                for i in 0..tmp_matches.len() {
+                                                    if tmp_matches[i].is_none() && tmp_matches_2[i].is_some() {
+                                                        tmp_matches[i] = Some(tmp_matches_2[i].as_ref().unwrap().clone());
+                                                    }
+                                                }
                                                 break;
                                             }
                                         }
