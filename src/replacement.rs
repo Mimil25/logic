@@ -60,10 +60,10 @@ impl<L: Language> TryFrom<(&[&str], &mut usize)> for PatternAtom<L> {
                     if len_pattern + 1 >= pattern_s.len() || 
                         pattern_s[len_pattern] != "*" ||
                             pattern_s[len_pattern + 1] != "}" {
-                        return Err(format!(
-                                "unexpected '{}{}', '*}}' expected to close AnyArgs pattern",
-                                pattern_s[len_pattern], pattern_s[len_pattern + 1]));
-                    }
+                                return Err(format!(
+                                        "unexpected '{}{}', '*}}' expected to close AnyArgs pattern",
+                                        pattern_s[len_pattern], pattern_s[len_pattern + 1]));
+                            }
                     *value.1 = 8 + len_pattern;
                     Ok(PatternAtom::AnyArgs {
                         name: name.to_string(),
@@ -163,15 +163,15 @@ fn give_ids_to_pattern<L: Language>(pattern: &mut Formula<Pattern<L>>) -> HashMa
             match a {
                 PatternAtom::Atom(_) => {},
                 PatternAtom::AnyArgs { name, arg:_, id, pattern:_ } |
-                PatternAtom::Any { name, id } => {
-                    *id = ids.get(name.as_str())
-                        .copied()
-                        .unwrap_or_else(|| {
-                            let id = ids.len();
-                            ids.insert(name.as_str(), id);
-                            id
-                        });
-                }
+                    PatternAtom::Any { name, id } => {
+                        *id = ids.get(name.as_str())
+                            .copied()
+                            .unwrap_or_else(|| {
+                                let id = ids.len();
+                                ids.insert(name.as_str(), id);
+                                id
+                            });
+                    }
             }
         });
     ids
@@ -234,6 +234,94 @@ impl MatchResult {
     }
 }
 
+fn match_args<'a, L: Language> (
+    p_args: &[Formula<Pattern<L>>],
+    f_args: &'a[Formula<L>],
+    matches: &mut Vec<Option<Cow<'a, Formula<L>>>>
+    ) -> (MatchResult, Vec<bool>) {
+    let mut used_args: Vec<bool> = vec![false; f_args.len()];
+
+    let mut start = vec![0; p_args.len()];
+    let mut tmp_matches = matches.clone();
+    let mut tmp_matches_2 = tmp_matches.clone();
+
+    loop {
+
+        let mut is_ok = true;
+        for (i_arg, p_arg) in p_args.iter().enumerate() {
+            let mut match_found = false;
+            let mut only_cant_match = true;
+            let mut ret_if_cant_match = MatchResult::CantMatch;
+            for i in start[i_arg]..f_args.len() {
+                if !used_args[i] {
+                    let mr = match_rule(p_arg, &f_args[i], &mut tmp_matches_2);
+                    match mr {
+                        MatchResult::Match => {
+                            used_args[i] = true;
+                            match_found = true;
+                            only_cant_match = false;
+                            for i in 0..tmp_matches.len() {
+                                if tmp_matches[i].is_none() && tmp_matches_2[i].is_some() {
+                                    tmp_matches[i] = Some(tmp_matches_2[i].as_ref().unwrap().clone());
+                                }
+                            }
+                            break;
+                        },
+                        MatchResult::CantMatch => {},
+                        MatchResult::MayMatchIfDifferent(id) => {
+                            if matches[id].is_none() { // that mean its one
+                                                       // of p_args
+                                only_cant_match = false;
+                            } else {
+                                ret_if_cant_match = MatchResult::MayMatchIfDifferent(id);
+                            }
+                        }
+                    }
+                    for i in 0..tmp_matches.len() {
+                        if tmp_matches[i].is_none() {
+                            tmp_matches_2[i] = None;
+                        }
+                    }
+                }
+            }
+            if only_cant_match {
+                return (ret_if_cant_match, used_args);
+            }
+            if !match_found {
+                is_ok = false;
+                used_args.fill(false);
+                break;
+            }
+        }
+        if is_ok {
+            *matches = tmp_matches;
+            break;
+        }
+
+        //increment start
+        let mut end = true;
+        for d in start.iter_mut() {
+            *d += 1;
+            if *d >= f_args.len() {
+                *d = 0;
+            } else {
+                end = false;
+                break;
+            }
+        }
+        if end {
+            return (MatchResult::CantMatch, used_args);
+        }
+        for i in 0..matches.len() {
+            if matches[i].is_none() {
+                tmp_matches[i] = None;
+                tmp_matches_2[i] = None;
+            }
+        }
+    }
+    return (MatchResult::Match, used_args);
+}
+
 fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, matches: &mut Vec<Option<Cow<'a, Formula<L>>>>) -> MatchResult {
     match (pat, f) {
         (Formula::Atom(PatternAtom::AnyArgs { name:_, arg:_, id:_, pattern:_ }), _) => panic!("unexpected AnyArgs"),
@@ -284,7 +372,7 @@ fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, mat
                 return MatchResult::Match;
             }
             if !p_args.is_empty() {
-                if let Formula::Atom(PatternAtom::AnyArgs { name:_, arg:_, id, pattern }) = &p_args[0] {
+                if let Formula::Atom(PatternAtom::AnyArgs { name:_, arg:_, id, pattern:_ }) = &p_args[0] {
                     match matches[*id] {
                         Some(_) => panic!("not implemented yet"),
                         None => {
@@ -293,107 +381,22 @@ fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, mat
                             // unmached args in f_args matche pattern else return false
                             // the created match function's args should contains
                             // args from f_args that have not been matched by one from p_args
-                            
-                            let mut used_args: Vec<bool> = vec![false; f_args.len()];
-                            
-                            let mut start = vec![0; p_args.len()];
-                            let mut tmp_matches = matches.clone();
-                            let mut tmp_matches_2 = tmp_matches.clone();
 
-                            loop {
-
-                                let mut is_ok = true;
-                                for (i_arg, p_arg) in p_args[1..].iter().enumerate() {
-                                    let mut match_found = false;
-                                    let mut only_cant_match = true;
-                                    let mut ret_if_cant_match = MatchResult::CantMatch;
-                                    for i in start[i_arg]..f_args.len() {
-                                        if !used_args[i] {
-                                            let mr = match_rule(p_arg, &f_args[i], &mut tmp_matches_2);
-                                            match mr {
-                                                MatchResult::Match => {
-                                                    used_args[i] = true;
-                                                    match_found = true;
-                                                    only_cant_match = false;
-                                                    for i in 0..tmp_matches.len() {
-                                                        if tmp_matches[i].is_none() && tmp_matches_2[i].is_some() {
-                                                            tmp_matches[i] = Some(tmp_matches_2[i].as_ref().unwrap().clone());
-                                                        }
-                                                    }
-                                                    break;
-                                                },
-                                                MatchResult::CantMatch => {},
-                                                MatchResult::MayMatchIfDifferent(id) => {
-                                                    if matches[id].is_none() { // that mean its one
-                                                                               // of p_args
-                                                        only_cant_match = false;
-                                                    } else {
-                                                        ret_if_cant_match = MatchResult::MayMatchIfDifferent(id);
-                                                    }
-                                                }
-                                            }
-                                            for i in 0..tmp_matches.len() {
-                                                if tmp_matches[i].is_none() {
-                                                    tmp_matches_2[i] = None;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if only_cant_match {
-                                        return ret_if_cant_match;
-                                    }
-                                    if !match_found {
-                                        is_ok = false;
-                                        used_args.fill(false);
-                                        break;
-                                    }
-                                }
-                                if is_ok {
-                                    *matches = tmp_matches;
-                                    break;
-                                }
-                                
-                                //increment start
-                                let mut end = true;
-                                for d in start.iter_mut() {
-                                    *d += 1;
-                                    if *d >= f_args.len() {
-                                        *d = 0;
-                                    } else {
-                                        end = false;
-                                        break;
-                                    }
-                                }
-                                if end {
-                                    return MatchResult::CantMatch;
-                                }
-                                for i in 0..matches.len() {
-                                    if matches[i].is_none() {
-                                        tmp_matches[i] = None;
-                                        tmp_matches_2[i] = None;
-                                    }
-                                }
-                            }
-                            for (i, arg) in f_args.iter().enumerate() {
-                                let mut phantom_matches = vec![None; matches.len() + 1];
-                                if !used_args[i] {
-                                    let mr = match_rule(pattern, arg, &mut phantom_matches);
-                                    match mr {
-                                        MatchResult::Match => {},
-                                        MatchResult::CantMatch => return MatchResult::CantMatch,
-                                        MatchResult::MayMatchIfDifferent(id) => return MatchResult::MayMatchIfDifferent(id),
-                                    }
-                                }
-                            }
+                            let (mr, used_args) = match_args(&p_args[1..], f_args, matches);
+                            match mr {
+                                MatchResult::Match => {},
+                                MatchResult::CantMatch => return MatchResult::CantMatch,
+                                MatchResult::MayMatchIfDifferent(id) => return MatchResult::MayMatchIfDifferent(id),
+                            }                            
                             matches[*id] = Some(Cow::Owned(Formula::Function(
-                                    ff.clone(),
-                                    f_args.iter()
+                                        ff.clone(),
+                                        f_args.iter()
                                         .enumerate()
                                         .filter(|(i,_)| !used_args[*i])
                                         .map(|(_, a)| a)
                                         .cloned()
                                         .collect(),
-                                    )));
+                                        )));
                             return MatchResult::Match;
                         }
                     }
@@ -402,15 +405,7 @@ fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, mat
             if p_args.len() != f_args.len() {
                 return MatchResult::CantMatch;
             }
-            for (p, f) in p_args.iter().zip(f_args.iter()) { // change that so we can match in any
-                                                             // order
-                match match_rule(p, f, matches) {
-                    MatchResult::Match => {},
-                    MatchResult::CantMatch => return MatchResult::CantMatch,
-                    MatchResult::MayMatchIfDifferent(id) => return MatchResult::MayMatchIfDifferent(id),
-                }
-            }
-            return MatchResult::Match;
+            return match_args(p_args, f_args, matches).0;
         },
         (_, _) => MatchResult::CantMatch,
     }
@@ -428,40 +423,40 @@ fn from_patern<L: Language>(pat: &Formula<Pattern<L>>, matches: &Vec<Option<Cow<
         Formula::UnaryOpp(o, f) => Formula::UnaryOpp(
             o.clone(),
             Box::new(from_patern(f, matches))),
-        Formula::BinaryOpp(a, o, b) => Formula::BinaryOpp(
-            Box::new(from_patern(a, matches)),
-            o.clone(),
-            Box::new(from_patern(b, matches))),
-        Formula::Function(f, args) => {
-            Formula::Function(
-                f.clone(),
-                args.iter().map(|a| {
-                    if let Formula::Atom(PatternAtom::AnyArgs { name:_, arg:_, id, pattern }) = a {
-                        if let Cow::Owned(Formula::Function(tmp_f, tmp_args)) = matches[*id].as_ref().unwrap() {
-                            let mut tmp_matches = matches.clone();
-                            let args = tmp_args.iter().map(move |a| { // generic arguments from the matched
-                                                        // function
-                                    tmp_matches.push(Some(Cow::Borrowed(a)));
-                                    let f = from_patern(pattern, &tmp_matches);
-                                    tmp_matches.pop();
-                                    f
-                                }).collect::<Vec<_>>().into_iter();
-                            Err(args)
-                        } else {
-                            panic!("{} should have been a function", matches[*id].as_ref().unwrap());
-                        }
-                    } else {
-                        Ok([from_patern(a, matches)].into_iter())
-                    }
-                }).fold(Vec::new(), |mut v, iter| {
-                    match iter {
-                        Ok(iter) => iter.for_each(|f| v.push(f)),
-                        Err(iter) => iter.for_each(|f| v.push(f))
-                    }
-                    v
-                })
-            )
-        },
+            Formula::BinaryOpp(a, o, b) => Formula::BinaryOpp(
+                Box::new(from_patern(a, matches)),
+                o.clone(),
+                Box::new(from_patern(b, matches))),
+                Formula::Function(f, args) => {
+                    Formula::Function(
+                        f.clone(),
+                        args.iter().map(|a| {
+                            if let Formula::Atom(PatternAtom::AnyArgs { name:_, arg:_, id, pattern }) = a {
+                                if let Cow::Owned(Formula::Function(tmp_f, tmp_args)) = matches[*id].as_ref().unwrap() {
+                                    let mut tmp_matches = matches.clone();
+                                    let args = tmp_args.iter().map(move |a| { // generic arguments from the matched
+                                                                              // function
+                                        tmp_matches.push(Some(Cow::Borrowed(a)));
+                                        let f = from_patern(pattern, &tmp_matches);
+                                        tmp_matches.pop();
+                                        f
+                                    }).collect::<Vec<_>>().into_iter();
+                                    Err(args)
+                                } else {
+                                    panic!("{} should have been a function", matches[*id].as_ref().unwrap());
+                                }
+                            } else {
+                                Ok([from_patern(a, matches)].into_iter())
+                            }
+                        }).fold(Vec::new(), |mut v, iter| {
+                            match iter {
+                                Ok(iter) => iter.for_each(|f| v.push(f)),
+                                Err(iter) => iter.for_each(|f| v.push(f))
+                            }
+                            v
+                        })
+                    )
+                },
     }
 }
 
