@@ -1,4 +1,4 @@
-use std::{collections::HashMap, borrow::Cow};
+use std::{collections::HashMap, borrow::Cow, cmp::Ordering};
 
 use crate::formula::*;
 
@@ -21,7 +21,7 @@ impl<L: Language> std::fmt::Display for PatternAtom<L> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             PatternAtom::Any{name, id:_} => f.write_str(format!("{{{}}}", name).as_str()),
-            PatternAtom::AnyArgs { name, id:_, arg, pattern } => f.write_str(format!("{{*{}:{}:{}}}", name, arg, pattern).as_str()),
+            PatternAtom::AnyArgs { name, id:_, arg, pattern } => f.write_str(format!("{{*{}:{}:{}*}}", name, arg, pattern).as_str()),
             PatternAtom::Atom(atom) => (atom as &dyn std::fmt::Display).fmt(f),
         }
     }
@@ -106,14 +106,53 @@ impl<L: Language> std::fmt::Display for ReplacementRule<L> {
     }
 }
 
-pub fn make_rule<L: Language>(pat: &str, replacement: &str) -> ReplacementRule<L> {
-    let mut rule = ReplacementRule {
-        pat: pat.parse().unwrap(),
-        replacement: replacement.parse().unwrap(),
-        nb_pat_atoms: 0,
-    };
+fn pattern_to_pattern_pattern<L: Language>(pattern: &Formula<Pattern<L>>) -> (Formula<Pattern<Pattern<L>>>, usize) {
+    // TODO find a nicer way to do this
+    let repr = format!("{}", pattern);
+    let mut p = repr.parse().unwrap();
+    let nb_pat_atoms = give_ids_to_pattern(&mut p).len();
+    (p, nb_pat_atoms)
+}
+
+fn rearange_func_pattern<L: Language>(pattern: &mut Formula<Pattern<L>>) {
+    match pattern {
+        Formula::UnaryOpp(_, p) => rearange_func_pattern(&mut*p),
+        Formula::BinaryOpp(a, _, b) => {
+            rearange_func_pattern(&mut*a);
+            rearange_func_pattern(&mut*b);
+        },
+        Formula::Function(_, args) => {
+            if args.len() < 3 {
+                return;
+            }
+            if let Formula::Atom(PatternAtom::AnyArgs { name:_, arg:_, id:_, pattern }) = &mut args[0] {
+                rearange_func_pattern(&mut*pattern);
+                for p in args[1..].iter_mut() {
+                    rearange_func_pattern(p);
+                }
+                args[1..].sort_unstable_by(|a, b| {
+                    let (p_a, nb_pat_atoms) = pattern_to_pattern_pattern(a);
+                    let mut _phantom_matches = vec![None; nb_pat_atoms];
+                    if let MatchResult::Match = match_rule(&p_a, b, &mut _phantom_matches) {
+                        return Ordering::Greater;
+                    }
+                    let (p_b, nb_pat_atoms) = pattern_to_pattern_pattern(b);
+                    _phantom_matches.fill(None);
+                    _phantom_matches.resize(nb_pat_atoms, None);
+                    if let MatchResult::Match = match_rule(&p_b, a, &mut _phantom_matches) {
+                        return Ordering::Less;
+                    }
+                    Ordering::Equal
+                });
+            }
+        },
+        _ => {},
+    }
+}
+
+fn give_ids_to_pattern<L: Language>(pattern: &mut Formula<Pattern<L>>) -> HashMap<&str, usize> {
     let mut ids = HashMap::new();
-    rule.pat.get_atoms_mut()
+    pattern.get_atoms_mut()
         .into_iter()
         .for_each(|a| {
             match a {
@@ -130,6 +169,17 @@ pub fn make_rule<L: Language>(pat: &str, replacement: &str) -> ReplacementRule<L
                 }
             }
         });
+    ids
+}
+
+pub fn make_rule<L: Language>(pat: &str, replacement: &str) -> ReplacementRule<L> {
+    let mut rule = ReplacementRule {
+        pat: pat.parse().unwrap(),
+        replacement: replacement.parse().unwrap(),
+        nb_pat_atoms: 0,
+    };
+    rearange_func_pattern(&mut rule.pat);
+    let ids = give_ids_to_pattern(&mut rule.pat);
     rule.nb_pat_atoms = ids.len();
     rule.replacement.get_atoms_mut()
         .into_iter()
