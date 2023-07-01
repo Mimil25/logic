@@ -122,29 +122,34 @@ fn rearange_func_pattern<L: Language>(pattern: &mut Formula<Pattern<L>>) {
             rearange_func_pattern(&mut*b);
         },
         Formula::Function(_, args) => {
-            if args.len() < 3 {
-                return;
-            }
+            let mut start = 0;
             if let Formula::Atom(PatternAtom::AnyArgs { name:_, arg:_, id:_, pattern }) = &mut args[0] {
                 rearange_func_pattern(&mut*pattern);
-                for p in args[1..].iter_mut() {
-                    rearange_func_pattern(p);
+                if args.len() < 3 {
+                    return;
                 }
-                args[1..].sort_unstable_by(|a, b| {
-                    let (p_a, nb_pat_atoms) = pattern_to_pattern_pattern(a);
-                    let mut _phantom_matches = vec![None; nb_pat_atoms];
-                    if let MatchResult::Match = match_rule(&p_a, b, &mut _phantom_matches) {
-                        return Ordering::Greater;
-                    }
-                    let (p_b, nb_pat_atoms) = pattern_to_pattern_pattern(b);
-                    _phantom_matches.fill(None);
-                    _phantom_matches.resize(nb_pat_atoms, None);
-                    if let MatchResult::Match = match_rule(&p_b, a, &mut _phantom_matches) {
-                        return Ordering::Less;
-                    }
-                    Ordering::Equal
-                });
+                start = 1;
+            } else if args.len() < 2 {
+                return;
             }
+            let start = start;
+            for p in args[start..].iter_mut() {
+                rearange_func_pattern(p);
+            }
+            args[start..].sort_unstable_by(|a, b| {
+                let (p_a, nb_pat_atoms) = pattern_to_pattern_pattern(a);
+                let mut _phantom_matches = vec![None; nb_pat_atoms];
+                if let MatchResult::Match = match_rule(&p_a, b, &mut _phantom_matches) {
+                    return Ordering::Greater;
+                }
+                let (p_b, nb_pat_atoms) = pattern_to_pattern_pattern(b);
+                _phantom_matches.fill(None);
+                _phantom_matches.resize(nb_pat_atoms, None);
+                if let MatchResult::Match = match_rule(&p_b, a, &mut _phantom_matches) {
+                    return Ordering::Less;
+                }
+                Ordering::Equal
+            });
         },
         _ => {},
     }
@@ -397,7 +402,8 @@ fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, mat
             if p_args.len() != f_args.len() {
                 return MatchResult::CantMatch;
             }
-            for (p, f) in p_args.iter().zip(f_args.iter()) {
+            for (p, f) in p_args.iter().zip(f_args.iter()) { // change that so we can match in any
+                                                             // order
                 match match_rule(p, f, matches) {
                     MatchResult::Match => {},
                     MatchResult::CantMatch => return MatchResult::CantMatch,
