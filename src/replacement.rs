@@ -292,10 +292,11 @@ fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, mat
                             let mut used_args: Vec<bool> = vec![false; f_args.len()];
                             
                             let mut start = vec![0; p_args.len()];
+                            let mut tmp_matches = matches.clone();
+                            let mut tmp_matches_2 = tmp_matches.clone();
 
                             loop {
-                                let mut tmp_matches = matches.clone();
-                                let mut tmp_matches_2 = tmp_matches.clone();
+
                                 let mut is_ok = true;
                                 for (i_arg, p_arg) in p_args[1..].iter().enumerate() {
                                     let mut match_found = false;
@@ -303,11 +304,6 @@ fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, mat
                                     let mut ret_if_cant_match = MatchResult::CantMatch;
                                     for i in start[i_arg]..f_args.len() {
                                         if !used_args[i] {
-                                            for i in 0..tmp_matches.len() {
-                                                if tmp_matches[i].is_none() {
-                                                    tmp_matches_2[i] = None;
-                                                }
-                                            }
                                             let mr = match_rule(p_arg, &f_args[i], &mut tmp_matches_2);
                                             match mr {
                                                 MatchResult::Match => {
@@ -329,6 +325,11 @@ fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, mat
                                                     } else {
                                                         ret_if_cant_match = MatchResult::MayMatchIfDifferent(id);
                                                     }
+                                                }
+                                            }
+                                            for i in 0..tmp_matches.len() {
+                                                if tmp_matches[i].is_none() {
+                                                    tmp_matches_2[i] = None;
                                                 }
                                             }
                                         }
@@ -360,6 +361,12 @@ fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, mat
                                 }
                                 if end {
                                     return MatchResult::CantMatch;
+                                }
+                                for i in 0..matches.len() {
+                                    if matches[i].is_none() {
+                                        tmp_matches[i] = None;
+                                        tmp_matches_2[i] = None;
+                                    }
                                 }
                             }
                             for (i, arg) in f_args.iter().enumerate() {
