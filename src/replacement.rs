@@ -242,60 +242,40 @@ fn match_args<'a, L: Language> (
     let mut used_args: Vec<bool> = vec![false; f_args.len()];
 
     let mut start = vec![0; p_args.len()];
-    let mut tmp_matches = matches.clone();
-    let mut tmp_matches_2 = tmp_matches.clone();
+    let matches_save = matches.clone();
 
     loop {
-
-        let mut is_ok = true;
-        for (i_arg, p_arg) in p_args.iter().enumerate() {
-            let mut match_found = false;
-            let mut only_cant_match = true;
-            let mut ret_if_cant_match = MatchResult::CantMatch;
-            for i in start[i_arg]..f_args.len() {
-                if !used_args[i] {
-                    let mr = match_rule(p_arg, &f_args[i], &mut tmp_matches_2);
-                    match mr {
-                        MatchResult::Match => {
-                            used_args[i] = true;
-                            match_found = true;
-                            only_cant_match = false;
-                            for i in 0..tmp_matches.len() {
-                                if tmp_matches[i].is_none() && tmp_matches_2[i].is_some() {
-                                    tmp_matches[i] = Some(tmp_matches_2[i].as_ref().unwrap().clone());
-                                }
-                            }
-                            break;
-                        },
-                        MatchResult::CantMatch => {},
-                        MatchResult::MayMatchIfDifferent(id) => {
-                            if matches[id].is_none() { // that mean its one
-                                                       // of p_args
-                                only_cant_match = false;
-                            } else {
-                                ret_if_cant_match = MatchResult::MayMatchIfDifferent(id);
-                            }
-                        }
-                    }
-                    for i in 0..tmp_matches.len() {
-                        if tmp_matches[i].is_none() {
-                            tmp_matches_2[i] = None;
-                        }
-                    }
-                }
+        let mut all_matched = true;
+        for (i, p_arg) in p_args.iter().enumerate() {
+            let mut j = start[i];
+            while j < f_args.len() && used_args[j] {
+                j += 1;
             }
-            if only_cant_match {
-                return (ret_if_cant_match, used_args);
-            }
-            if !match_found {
-                is_ok = false;
-                used_args.fill(false);
+            if j == f_args.len() {
+                all_matched = false;
                 break;
             }
+            match match_rule(p_arg, &f_args[j], matches) {
+                MatchResult::Match => {
+                    used_args[j] = true;
+                },
+                MatchResult::CantMatch |
+                MatchResult::MayMatchIfDifferent(_) => {
+                    all_matched = false;
+                    break;
+                },
+            }
         }
-        if is_ok {
-            *matches = tmp_matches;
-            break;
+
+        if all_matched {
+            return (MatchResult::Match, used_args);
+        } else {
+            for i in 0..matches.len() {
+                if matches_save[i].is_none() {
+                    matches[i] = None;
+                }
+            }
+            used_args.fill(false);
         }
 
         //increment start
@@ -312,14 +292,7 @@ fn match_args<'a, L: Language> (
         if end {
             return (MatchResult::CantMatch, used_args);
         }
-        for i in 0..matches.len() {
-            if matches[i].is_none() {
-                tmp_matches[i] = None;
-                tmp_matches_2[i] = None;
-            }
-        }
     }
-    return (MatchResult::Match, used_args);
 }
 
 fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, matches: &mut Vec<Option<Cow<'a, Formula<L>>>>) -> MatchResult {
