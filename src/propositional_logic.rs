@@ -109,7 +109,7 @@ pub mod boolean_interpretation {
             make_rule("!!{F}", "{F}"),
             
             make_rule("ALL({*args*}, {A}, !{A})", "FALSE"),
-            make_rule("ANY({*args*}, {A}, !{A})", "TRUE"),
+            make_rule("ANY({*args*}, !{A}, {A})", "TRUE"),
             
             make_rule("ALL({*args*}, FALSE)", "FALSE"),
             make_rule("ANY({*args*}, TRUE)", "TRUE"),
@@ -135,7 +135,7 @@ pub mod boolean_interpretation {
             
             // distribution of negation
             make_rule("!ALL({*args*})", "ANY({*args:ARG:!{ARG}*})"),
-            make_rule("!ANY({*args*})", "AND({*args:ARG:!{ARG}*})"),
+            make_rule("!ANY({*args*})", "ALL({*args:ARG:!{ARG}*})"),
 
             // distribution of disjuctions
             make_rule(
@@ -188,7 +188,7 @@ pub mod boolean_interpretation {
                                 clauses[b].clone()
                             ]);
                         let n = devlopement_rules.iter().any(|rule| replace(rule, &mut tmp));
-                        println!("{} {} + {} -> {}", n, clauses[a], clauses[b], tmp);
+                        //println!("{} {} + {} -> {}", n, clauses[a], clauses[b], tmp);
                         if n && !clauses.contains(&tmp) {
                             clauses.push(tmp);
                             new = true;
