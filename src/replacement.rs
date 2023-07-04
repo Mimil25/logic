@@ -114,6 +114,17 @@ fn pattern_to_pattern_pattern<L: Language>(pattern: &Formula<Pattern<L>>) -> (Fo
     (p, nb_pat_atoms)
 }
 
+// return true if pattern a can match any formula that can be matched by pattern b
+fn pattern_include<L: Language>(a: &Formula<Pattern<L>>, b: &Formula<Pattern<L>>) -> bool {
+    let (p_a, nb_pat_atoms) = pattern_to_pattern_pattern(a);
+    let mut _phantom_matches = vec![None; nb_pat_atoms];
+    if let MatchResult::Match = match_rule(&p_a, b, &mut _phantom_matches) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 fn rearange_func_pattern<L: Language>(pattern: &mut Formula<Pattern<L>>) {
     match pattern {
         Formula::UnaryOpp(_, p) => rearange_func_pattern(&mut*p),
@@ -137,18 +148,13 @@ fn rearange_func_pattern<L: Language>(pattern: &mut Formula<Pattern<L>>) {
                 rearange_func_pattern(p);
             }
             args[start..].sort_unstable_by(|a, b| {
-                let (p_a, nb_pat_atoms) = pattern_to_pattern_pattern(a);
-                let mut _phantom_matches = vec![None; nb_pat_atoms];
-                if let MatchResult::Match = match_rule(&p_a, b, &mut _phantom_matches) {
-                    return Ordering::Greater;
+                if pattern_include(a, b) {
+                    Ordering::Greater
+                } else if pattern_include(b, a) {
+                    Ordering::Less
+                } else {
+                    Ordering::Equal
                 }
-                let (p_b, nb_pat_atoms) = pattern_to_pattern_pattern(b);
-                _phantom_matches.fill(None);
-                _phantom_matches.resize(nb_pat_atoms, None);
-                if let MatchResult::Match = match_rule(&p_b, a, &mut _phantom_matches) {
-                    return Ordering::Less;
-                }
-                Ordering::Equal
             });
         },
         _ => {},
@@ -239,6 +245,7 @@ fn match_args<'a, L: Language> (
     f_args: &'a[Formula<L>],
     matches: &mut Vec<Option<Cow<'a, Formula<L>>>>
     ) -> (MatchResult, Vec<bool>) {
+    debug_assert!(f_args.is_sorted_by(|a, b| Some(cmp_formula(a, b))));
     let mut used_args: Vec<bool> = vec![false; f_args.len()];
 
     let mut start = vec![0; p_args.len()];
@@ -247,6 +254,7 @@ fn match_args<'a, L: Language> (
     loop {
         let mut all_matched = true;
         for (i, p_arg) in p_args.iter().enumerate() {
+
             let mut j = start[i];
             while j < f_args.len() && used_args[j] {
                 j += 1;
@@ -260,10 +268,10 @@ fn match_args<'a, L: Language> (
                     used_args[j] = true;
                 },
                 MatchResult::CantMatch |
-                MatchResult::MayMatchIfDifferent(_) => {
-                    all_matched = false;
-                    break;
-                },
+                    MatchResult::MayMatchIfDifferent(_) => {
+                        all_matched = false;
+                        break;
+                    },
             }
         }
 
@@ -360,7 +368,7 @@ fn match_rule<'a, L: Language>(pat: &Formula<Pattern<L>>, f: &'a Formula<L>, mat
                                 MatchResult::Match => {},
                                 MatchResult::CantMatch => return MatchResult::CantMatch,
                                 MatchResult::MayMatchIfDifferent(id) => return MatchResult::MayMatchIfDifferent(id),
-                            }                            
+                            }
                             matches[*id] = Some(Cow::Owned(Formula::Function(
                                         ff.clone(),
                                         f_args.iter()
@@ -393,62 +401,131 @@ fn from_patern<L: Language>(pat: &Formula<Pattern<L>>, matches: &Vec<Option<Cow<
         },
         Formula::Atom(PatternAtom::AnyArgs { name:_, arg:_, id:_, pattern:_ }) => panic!("unexpected AnyArgs"),
         Formula::Atom(PatternAtom::Atom(a)) => Formula::Atom(a.clone()),
-        Formula::UnaryOpp(o, f) => Formula::UnaryOpp(
-            o.clone(),
-            Box::new(from_patern(f, matches))),
-            Formula::BinaryOpp(a, o, b) => Formula::BinaryOpp(
-                Box::new(from_patern(a, matches)),
-                o.clone(),
-                Box::new(from_patern(b, matches))),
-                Formula::Function(f, args) => {
-                    Formula::Function(
-                        f.clone(),
-                        args.iter().map(|a| {
-                            if let Formula::Atom(PatternAtom::AnyArgs { name:_, arg:_, id, pattern }) = a {
-                                if let Cow::Owned(Formula::Function(tmp_f, tmp_args)) = matches[*id].as_ref().unwrap() {
-                                    let mut tmp_matches = matches.clone();
-                                    let args = tmp_args.iter().map(move |a| { // generic arguments from the matched
-                                                                              // function
-                                        tmp_matches.push(Some(Cow::Borrowed(a)));
-                                        let f = from_patern(pattern, &tmp_matches);
-                                        tmp_matches.pop();
-                                        f
-                                    }).collect::<Vec<_>>().into_iter();
-                                    Err(args)
-                                } else {
-                                    panic!("{} should have been a function", matches[*id].as_ref().unwrap());
-                                }
-                            } else {
-                                Ok([from_patern(a, matches)].into_iter())
-                            }
-                        }).fold(Vec::new(), |mut v, iter| {
-                            match iter {
-                                Ok(iter) => iter.for_each(|f| v.push(f)),
-                                Err(iter) => iter.for_each(|f| v.push(f))
-                            }
-                            v
-                        })
-                    )
-                },
+        Formula::UnaryOpp(o, f) => Formula::UnaryOpp(o.clone(), Box::new(from_patern(f, matches))),
+        Formula::BinaryOpp(a, o, b) => Formula::BinaryOpp(Box::new(from_patern(a, matches)), o.clone(), Box::new(from_patern(b, matches))),
+        Formula::Function(f, args) => {
+            Formula::Function(
+                f.clone(),
+                args.iter().map(|a| {
+                    if let Formula::Atom(PatternAtom::AnyArgs { name:_, arg:_, id, pattern }) = a {
+                        if let Cow::Owned(Formula::Function(_, tmp_args)) = matches[*id].as_ref().unwrap() {
+                            let mut tmp_matches = matches.clone();
+                            let args = tmp_args.iter().map(move |a| { // generic arguments from the matched
+                                                                      // function
+                                tmp_matches.push(Some(Cow::Borrowed(a)));
+                                let f = from_patern(pattern, &tmp_matches);
+                                tmp_matches.pop();
+                                f
+                            }).collect::<Vec<_>>().into_iter();
+                            Err(args)
+                        } else {
+                            panic!("{} should have been a function", matches[*id].as_ref().unwrap());
+                        }
+                    } else {
+                        Ok([from_patern(a, matches)].into_iter())
+                    }
+                }).fold(Vec::new(), |mut v, iter| {
+                    match iter {
+                        Ok(iter) => iter.for_each(|f| {
+                            let p = v.binary_search_by(|probe|
+                                cmp_formula(probe, &f)
+                                ).unwrap_or_else(|e| e);
+                            v.insert(p, f);
+                        }),
+                        Err(iter) => iter.for_each(|f| {
+                            let p = v.binary_search_by(|probe|
+                                cmp_formula(probe, &f)
+                                ).unwrap_or_else(|e| e);
+                            v.insert(p, f);
+                        }),
+                    }
+                    debug_assert!(v.is_sorted_by(|a, b| Some(cmp_formula(a, b))));
+                    v
+                })
+            )
+        },
     }
 }
 
-pub fn replace<L: Language>(rule: &ReplacementRule<L>, f: &mut Formula<L>) -> bool {
+fn cmp_formula<L1: Language, L2: Language>(a: &Formula<L1>, b: &Formula<L2>) -> Ordering
+where L1::UnaryOpp: PartialOrd<L2::UnaryOpp>,
+      L1::BinaryOpp: PartialOrd<L2::BinaryOpp>,
+      L1::Function: PartialOrd<L2::Function> {
+          match (a, b) {
+              (Formula::Atom(_), Formula::Atom(_)) => Ordering::Equal,
+              (Formula::Atom(_), Formula::UnaryOpp(_, _)) => Ordering::Greater,
+              (Formula::Atom(_), Formula::BinaryOpp(_, _, _)) => Ordering::Greater,
+              (Formula::Atom(_), Formula::Function(_, _)) => Ordering::Greater,
+
+              (Formula::UnaryOpp(_, _), Formula::Atom(_)) => Ordering::Less,
+              (Formula::UnaryOpp(a, _), Formula::UnaryOpp(b, _)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
+              (Formula::UnaryOpp(_, _), Formula::BinaryOpp(_, _, _)) => Ordering::Greater,
+              (Formula::UnaryOpp(_, _), Formula::Function(_, _)) => Ordering::Greater,
+
+              (Formula::BinaryOpp(_, _, _), Formula::Atom(_)) => Ordering::Less,
+              (Formula::BinaryOpp(_, _, _), Formula::UnaryOpp(_, _)) => Ordering::Less,
+              (Formula::BinaryOpp(_, a, _), Formula::BinaryOpp(_, b, _)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
+              (Formula::BinaryOpp(_, _, _), Formula::Function(_, _)) => Ordering::Greater,
+
+              (Formula::Function(_, _), Formula::Atom(_)) => Ordering::Less,
+              (Formula::Function(_, _), Formula::UnaryOpp(_, _)) => Ordering::Less,
+              (Formula::Function(_, _), Formula::BinaryOpp(_, _, _)) => Ordering::Less,
+              (Formula::Function(a, _), Formula::Function(b, _)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
+          }
+      }
+
+fn sort_formula_func<L: Language>(f: &mut Formula<L>) {
+    match f {
+        Formula::UnaryOpp(_, a) => sort_formula_func(a),
+        Formula::BinaryOpp(a, _, b) => {
+            sort_formula_func(a);
+            sort_formula_func(b);
+        },
+        Formula::Function(_, args) => {
+            args.iter_mut().for_each(|arg| sort_formula_func(arg));
+            args.sort_unstable_by(cmp_formula);
+            debug_assert!(args.is_sorted_by(|a, b| Some(cmp_formula(a, b))));
+        },
+        _ => {},
+    }
+}
+
+pub fn apply<L: Language>(rules: &[ReplacementRule<L>], f: &Formula<L>) -> Formula<L> {
+    let mut f = f.clone();
+    sort_formula_func(&mut f);
+
+    while rules.iter().any(|rule| {
+        let b = replace_top_down(rule, &mut f);
+        println!("{} {}", rule, b);
+        b
+    }) {
+    }
+
+    f
+}
+
+fn replace_top_down<L: Language>(rule: &ReplacementRule<L>, f: &mut Formula<L>) -> bool {
     let mut matches = Vec::with_capacity(rule.nb_pat_atoms);
     matches.resize_with(rule.nb_pat_atoms, || None);
+    let changes = match f {
+        Formula::Atom(_) => false,
+        Formula::UnaryOpp(_, a) => replace_top_down(rule, a),
+        Formula::BinaryOpp(a, _, b) => replace_top_down(rule, a) | replace_top_down(rule, b),
+        Formula::Function(_, args) => {
+            let b = args
+                .iter_mut()
+                .map(|a| replace_top_down(rule, a))
+                .reduce(|a, b| a | b)
+                .unwrap_or(false);
+            if b {
+                args.sort_unstable_by(cmp_formula);
+            }
+            b
+        },
+    };
     let s_changes = match_rule(&rule.pat, f, &mut matches).is_match();
     if s_changes {
         *f = from_patern(&rule.replacement, &matches);
     }
-    let changes = match f {
-        Formula::Atom(_) => false,
-        Formula::UnaryOpp(_, a) => replace(rule, a),
-        Formula::BinaryOpp(a, _, b) => replace(rule, a) | replace(rule, b),
-        Formula::Function(_, args) => args
-            .iter_mut()
-            .map(|a| replace(rule, a))
-            .reduce(|a, b| a | b)
-            .unwrap_or(false),
-    };
     changes | s_changes
 }

@@ -22,7 +22,8 @@ pub trait Opp:
     PartialEq +
     std::hash::Hash +
     for<'a> TryFrom<(&'a [&'a str], &'a mut usize), Error = String> +
-    Clone
+    Clone +
+    PartialOrd
 {}
 
 impl fmt::Display for Variable {

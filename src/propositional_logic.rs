@@ -108,9 +108,6 @@ pub mod boolean_interpretation {
             // simplification of double negation
             make_rule("!!{F}", "{F}"),
             
-            make_rule("ALL({*args*}, {A}, !{A})", "FALSE"),
-            make_rule("ANY({*args*}, !{A}, {A})", "TRUE"),
-            
             make_rule("ALL({*args*}, FALSE)", "FALSE"),
             make_rule("ANY({*args*}, TRUE)", "TRUE"),
             make_rule("ALL({*args*}, TRUE)", "ALL({*args*})"),
@@ -125,10 +122,6 @@ pub mod boolean_interpretation {
             make_rule("ALL({*args*}, ALL({*args2*}))", "ALL({*args*}, {*args2*})"),
             make_rule("ANY({*args*}, ANY({*args2*}))", "ANY({*args*}, {*args2*})"),
             
-            // simplification of double apparitions
-            make_rule("ALL({*args*}, {A}, {A})", "ALL({*args*}, {A})"),
-            make_rule("ANY({*args*}, {A}, {A})", "ANY({*args*}, {A})"),
-
             // simplification of atomic junctions
             make_rule("ALL({A})", "{A}"),
             make_rule("ANY({A})", "{A}"),
@@ -141,10 +134,17 @@ pub mod boolean_interpretation {
             make_rule(
                 "ANY({*disjunction*}, {A}, ALL({*conjuction*}))",
                 "ANY({*disjunction*}, ALL({*conjuction:ARG:ANY({A}, {ARG})*}))"),
+            
+            // simplification of double apparitions
+            make_rule("ALL({*args*}, {A}, {A})", "ALL({*args*}, {A})"),
+            make_rule("ANY({*args*}, {A}, {A})", "ANY({*args*}, {A})"),
+
+            make_rule("ALL({*args*}, {A}, !{A})", "FALSE"),
+            make_rule("ANY({*args*}, !{A}, {A})", "TRUE"),
+            
         ];
-        while rules.iter().any(|rule| replace(rule, f)) {
-            println!("{}", f);
-        }
+
+        *f = apply(&rules, f);
     }
 
     
@@ -158,6 +158,7 @@ pub mod boolean_interpretation {
 
         println!("cnf : {}", f);
         
+        /*
 
         if let Formula::Function(PLFuncs::Conjuction(_), clauses) = f {
             // saturation
@@ -187,7 +188,7 @@ pub mod boolean_interpretation {
                                 clauses[a].clone(),
                                 clauses[b].clone()
                             ]);
-                        let n = devlopement_rules.iter().any(|rule| replace(rule, &mut tmp));
+                        let n = devlopement_rules.iter().any(|rule| replace_bottom_up(rule, &mut tmp));
                         //println!("{} {} + {} -> {}", n, clauses[a], clauses[b], tmp);
                         if n && !clauses.contains(&tmp) {
                             clauses.push(tmp);
@@ -226,6 +227,7 @@ pub mod boolean_interpretation {
             make_rule("ALL({*a*}, {A}, ANY({*b*}, !{A}))", "ALL({*a*}, {A}, ANY({*b*}))"),
             make_rule("ALL({*a*}, !{A}, ANY({*b*}, {A}))", "ALL({*a*}, !{A}, ANY({*b*}))"),
         ];
-        while simplification_rules.iter().any(|rule| replace(rule, f)){}
+        while simplification_rules.iter().any(|rule| replace_top_down(rule, f)){}
+        */
     }
 }

@@ -1,6 +1,7 @@
 #![feature(iter_collect_into)]
 #![feature(inherent_associated_types)]
 #![feature(generic_const_exprs)]
+#![feature(is_sorted)]
 mod formula;
 mod interpretation;
 mod opperators;
@@ -17,9 +18,8 @@ use propositional_logic::boolean_interpretation::{truth_table_print, resolve};
 
 fn main() {
     sudoku::main();
-    let r = sudoku::is_valid_sudoku().parse::<Formula<PropositionalLanguage<Variable>>>();
+    let r = sudoku::sudoku_2x2_exemple().parse::<Formula<PropositionalLanguage<Variable>>>();
     println!("parsing done");
-    /*
     match r {
         Ok(mut f) => {
             resolve(&mut f);
@@ -28,7 +28,6 @@ fn main() {
         },
         Err(e) => eprintln!("Error : {}", e),
     }
-    */
     loop {
         print!("Enter propositional statement : ");
         let mut s = String::new();
